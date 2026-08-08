@@ -1,0 +1,130 @@
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useCart } from '../context/CartContext'
+import { useAuth } from '../context/AuthContext'
+import { useStore } from '../context/StoreContext'
+import { formatPrice } from '../utils/format'
+import AddressForm from '../components/checkout/AddressForm'
+import PaymentOptions from '../components/checkout/PaymentOptions'
+import OTPModal from '../components/auth/OTPModal'
+import Button from '../components/ui/Button'
+
+const emptyAddress = { name: '', phone: '', pincode: '', line1: '', city: '', state: '' }
+
+export default function Checkout() {
+  const navigate = useNavigate()
+  const { items, payable, subtotal, discountTotal, clearCart } = useCart()
+  const { user } = useAuth()
+  const { settings, addOrder } = useStore()
+
+  const [otpOpen, setOtpOpen] = useState(!user)
+  const [address, setAddress] = useState(emptyAddress)
+  const [payment, setPayment] = useState('upi')
+  const [placing, setPlacing] = useState(false)
+
+  const deliveryFee = payable >= settings.freeDeliveryAbove || payable === 0 ? 0 : settings.deliveryFee
+  const total = payable + deliveryFee
+
+  const addressComplete = Object.values(address).every((v) => v.trim() !== '')
+
+  if (items.length === 0) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-24 text-center">
+        <p className="font-display text-3xl uppercase mb-3">Nothing to check out</p>
+        <Button as={Link} to="/shop" variant="primary">Browse the Shop</Button>
+      </div>
+    )
+  }
+
+  // NOTE: This simulates a successful payment after a short delay.
+  // TODO(production): replace with a real gateway call, e.g. Razorpay's
+  // checkout.js or Stripe's Payment Element, and only create the order
+  // after the gateway confirms payment via a server-side webhook.
+  const handlePlaceOrder = () => {
+    setPlacing(true)
+    setTimeout(() => {
+      const order = addOrder({
+        items,
+        address,
+        paymentMethod: payment,
+        subtotal,
+        discountTotal,
+        deliveryFee,
+        total,
+        customerPhone: user?.phone
+      })
+      clearCart()
+      setPlacing(false)
+      navigate(`/order-success/${order.id}`)
+    }, 1200)
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-10">
+      <h1 className="font-display text-3xl md:text-4xl uppercase mb-8">Checkout</h1>
+
+      <OTPModal open={otpOpen} onClose={() => navigate('/cart')} onSuccess={() => setOtpOpen(false)} />
+
+      {!otpOpen && (
+        <div className="grid lg:grid-cols-[1fr_360px] gap-10">
+          <div className="flex flex-col gap-10">
+            <section>
+              <p className="font-accent uppercase tracking-wide text-volt mb-4">1. Shipping Address</p>
+              <AddressForm address={address} onChange={setAddress} />
+            </section>
+
+            <section>
+              <p className="font-accent uppercase tracking-wide text-volt mb-4">2. Payment Method</p>
+              <PaymentOptions selected={payment} onSelect={setPayment} />
+            </section>
+          </div>
+
+          <div className="border border-line p-6 h-fit sticky top-24">
+            <p className="font-accent uppercase tracking-wide text-lg mb-5">Order Summary</p>
+            <div className="flex flex-col gap-2 max-h-52 overflow-y-auto mb-4 pr-1">
+              {items.map((item) => (
+                <div key={item.lineId} className="flex justify-between text-sm">
+                  <span className="text-slate truncate pr-2">
+                    {item.name} × {item.qty}
+                  </span>
+                  <span>{formatPrice(item.price * item.qty, settings.currencySymbol)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-line pt-4 flex flex-col gap-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate">Subtotal</span>
+                <span>{formatPrice(subtotal, settings.currencySymbol)}</span>
+              </div>
+              {discountTotal > 0 && (
+                <div className="flex justify-between text-volt">
+                  <span>Discount</span>
+                  <span>-{formatPrice(discountTotal, settings.currencySymbol)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate">Delivery</span>
+                <span>{deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee, settings.currencySymbol)}</span>
+              </div>
+            </div>
+            <div className="border-t border-line mt-3 pt-3 flex justify-between font-accent text-xl">
+              <span>Total</span>
+              <span className="text-volt">{formatPrice(total, settings.currencySymbol)}</span>
+            </div>
+            <Button
+              variant="primary"
+              className="w-full mt-6"
+              disabled={!addressComplete || placing}
+              onClick={handlePlaceOrder}
+            >
+              {placing ? 'Placing Order…' : `Pay ${formatPrice(total, settings.currencySymbol)}`}
+            </Button>
+            {!addressComplete && (
+              <p className="text-xs text-slate mt-2 text-center">Fill in your address to continue.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
