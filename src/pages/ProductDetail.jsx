@@ -132,7 +132,7 @@ export default function ProductDetail() {
                     key={c}
                     onClick={() => setColor(c)}
                     className={`px-4 py-2 text-sm border ${
-                      color === c ? 'border-volt text-volt' : 'border-line text-slate'
+                      color === c ? 'border-volt text-volt' : 'border-paper/25 text-slate'
                     }`}
                   >
                     {c}
@@ -153,7 +153,7 @@ export default function ProductDetail() {
                     key={s}
                     onClick={() => setSize(s)}
                     className={`w-11 h-11 text-sm border ${
-                      size === s ? 'border-volt text-volt' : 'border-line text-slate'
+                      size === s ? 'border-volt text-volt' : 'border-paper/25 text-slate'
                     }`}
                   >
                     {s}
@@ -165,7 +165,7 @@ export default function ProductDetail() {
 
           <div className="mt-6">
             <p className="font-accent uppercase text-sm tracking-wide mb-2">Quantity</p>
-            <div className="flex items-center border border-line w-fit">
+            <div className="flex items-center border border-paper/25 w-fit">
               <button className="p-3" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease">
                 <Minus size={14} />
               </button>

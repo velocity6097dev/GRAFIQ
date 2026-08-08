@@ -3,7 +3,7 @@ import { useStore } from '../../context/StoreContext'
 import Button from '../../components/ui/Button'
 
 const inputClass =
-  'w-full bg-transparent border border-line focus:border-volt outline-none px-3 py-2 text-sm'
+  'w-full bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2 text-sm'
 
 export default function Settings() {
   const { settings, updateSettings } = useStore()

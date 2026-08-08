@@ -46,7 +46,7 @@ export default function Cart() {
                     </button>
                   </div>
                   <div className="flex items-center justify-between mt-4">
-                    <div className="flex items-center border border-line">
+                    <div className="flex items-center border border-paper/25">
                       <button className="p-2" onClick={() => updateQty(item.lineId, item.qty - 1)} aria-label="Decrease">
                         <Minus size={14} />
                       </button>

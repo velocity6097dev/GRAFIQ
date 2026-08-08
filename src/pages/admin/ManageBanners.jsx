@@ -26,7 +26,7 @@ export default function ManageBanners() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   const inputClass =
-    'w-full bg-transparent border border-line focus:border-volt outline-none px-3 py-2 text-sm'
+    'w-full bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2 text-sm'
 
   const openAdd = () => {
     setEditingId(null)

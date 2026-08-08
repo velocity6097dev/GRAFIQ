@@ -123,7 +123,9 @@ export default function Shop() {
             className="bg-panel border border-line px-3 py-2 text-sm font-accent uppercase outline-none"
           >
             {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value} style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>
+                {o.label}
+              </option>
             ))}
           </select>
         </div>

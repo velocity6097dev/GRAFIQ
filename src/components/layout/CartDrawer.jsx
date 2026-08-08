@@ -69,7 +69,7 @@ export default function CartDrawer({ open, onClose }) {
                           {item.isCustom && ' · Custom Print'}
                         </p>
                         <div className="flex items-center justify-between mt-3">
-                          <div className="flex items-center border border-line">
+                          <div className="flex items-center border border-paper/25">
                             <button
                               className="p-1.5"
                               onClick={() => updateQty(item.lineId, item.qty - 1)}
@@ -105,6 +105,7 @@ export default function CartDrawer({ open, onClose }) {
                 </div>
                 <Button
                   variant="primary"
+                  size="lg"
                   as={Link}
                   to="/checkout"
                   onClick={onClose}
@@ -115,7 +116,7 @@ export default function CartDrawer({ open, onClose }) {
                 <Link
                   to="/cart"
                   onClick={onClose}
-                  className="block text-center text-sm text-slate hover:text-volt mt-3"
+                  className="block text-center text-sm text-slate hover:text-volt mt-4"
                 >
                   View full cart
                 </Link>

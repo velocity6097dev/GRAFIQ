@@ -113,7 +113,7 @@ export default function DesignYourOwn() {
                   key={g.id}
                   onClick={() => setGarment(g.id)}
                   className={`border p-3 text-center text-sm ${
-                    garment === g.id ? 'border-volt text-volt' : 'border-line text-slate'
+                    garment === g.id ? 'border-volt text-volt' : 'border-paper/25 text-slate'
                   }`}
                 >
                   <p className="font-accent uppercase">{g.label}</p>
@@ -150,7 +150,7 @@ export default function DesignYourOwn() {
                   key={p.id}
                   onClick={() => setPlacement(p.id)}
                   className={`px-4 py-2 text-sm border ${
-                    placement === p.id ? 'border-volt text-volt' : 'border-line text-slate'
+                    placement === p.id ? 'border-volt text-volt' : 'border-paper/25 text-slate'
                   }`}
                 >
                   {p.label} {p.fee > 0 && `(+${formatPrice(p.fee, settings.currencySymbol)})`}
@@ -168,7 +168,7 @@ export default function DesignYourOwn() {
                     key={c}
                     onClick={() => setColor(c)}
                     className={`px-3 py-2 text-sm border ${
-                      color === c ? 'border-volt text-volt' : 'border-line text-slate'
+                      color === c ? 'border-volt text-volt' : 'border-paper/25 text-slate'
                     }`}
                   >
                     {c}
@@ -184,7 +184,7 @@ export default function DesignYourOwn() {
                     key={s}
                     onClick={() => setSize(s)}
                     className={`w-10 h-10 text-sm border ${
-                      size === s ? 'border-volt text-volt' : 'border-line text-slate'
+                      size === s ? 'border-volt text-volt' : 'border-paper/25 text-slate'
                     }`}
                   >
                     {s}
@@ -200,7 +200,7 @@ export default function DesignYourOwn() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. keep the print centered, use a smaller size, etc."
-              className="w-full bg-transparent border border-line focus:border-volt outline-none px-3 py-2.5 min-h-[80px] placeholder:text-slate"
+              className="w-full bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2.5 min-h-[80px] placeholder:text-slate"
             />
           </div>
 

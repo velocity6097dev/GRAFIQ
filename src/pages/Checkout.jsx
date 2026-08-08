@@ -11,6 +11,22 @@ import Button from '../components/ui/Button'
 
 const emptyAddress = { name: '', phone: '', pincode: '', line1: '', city: '', state: '' }
 
+// The address fields live in a page layout, not a submittable <form>, so
+// HTML's `required` attribute never actually fires (that only triggers on
+// a real form-submit event). This runs the same checks by hand so a click
+// on "Pay Now" with missing fields turns them red with a message instead
+// of doing nothing.
+function validateAddress(address) {
+  const errors = {}
+  if (!address.name.trim()) errors.name = 'Name is required.'
+  if (!/^\d{10}$/.test(address.phone)) errors.phone = 'Enter a valid 10-digit mobile number.'
+  if (!/^\d{6}$/.test(address.pincode)) errors.pincode = 'Enter a valid 6-digit pincode.'
+  if (!address.line1.trim()) errors.line1 = 'Address is required.'
+  if (!address.city.trim()) errors.city = 'City is required.'
+  if (!address.state.trim()) errors.state = 'State is required.'
+  return errors
+}
+
 export default function Checkout() {
   const navigate = useNavigate()
   const { items, payable, subtotal, discountTotal, clearCart } = useCart()
@@ -19,13 +35,12 @@ export default function Checkout() {
 
   const [otpOpen, setOtpOpen] = useState(!user)
   const [address, setAddress] = useState(emptyAddress)
+  const [errors, setErrors] = useState({})
   const [payment, setPayment] = useState('upi')
   const [placing, setPlacing] = useState(false)
 
   const deliveryFee = payable >= settings.freeDeliveryAbove || payable === 0 ? 0 : settings.deliveryFee
   const total = payable + deliveryFee
-
-  const addressComplete = Object.values(address).every((v) => v.trim() !== '')
 
   if (items.length === 0) {
     return (
@@ -41,6 +56,12 @@ export default function Checkout() {
   // checkout.js or Stripe's Payment Element, and only create the order
   // after the gateway confirms payment via a server-side webhook.
   const handlePlaceOrder = () => {
+    const validationErrors = validateAddress(address)
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors)
+      return
+    }
+    setErrors({})
     setPlacing(true)
     setTimeout(() => {
       const order = addOrder({
@@ -59,6 +80,8 @@ export default function Checkout() {
     }, 1200)
   }
 
+  const hasErrors = Object.keys(errors).length > 0
+
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 py-10">
       <h1 className="font-display text-3xl md:text-4xl uppercase mb-8">Checkout</h1>
@@ -70,7 +93,7 @@ export default function Checkout() {
           <div className="flex flex-col gap-10">
             <section>
               <p className="font-accent uppercase tracking-wide text-volt mb-4">1. Shipping Address</p>
-              <AddressForm address={address} onChange={setAddress} />
+              <AddressForm address={address} onChange={setAddress} errors={errors} />
             </section>
 
             <section>
@@ -113,14 +136,17 @@ export default function Checkout() {
             </div>
             <Button
               variant="primary"
+              size="lg"
               className="w-full mt-6"
-              disabled={!addressComplete || placing}
+              disabled={placing}
               onClick={handlePlaceOrder}
             >
               {placing ? 'Placing Order…' : `Pay ${formatPrice(total, settings.currencySymbol)}`}
             </Button>
-            {!addressComplete && (
-              <p className="text-xs text-slate mt-2 text-center">Fill in your address to continue.</p>
+            {hasErrors && (
+              <p className="text-red-400 text-xs mt-2 text-center">
+                Please fix the highlighted fields above.
+              </p>
             )}
           </div>
         </div>

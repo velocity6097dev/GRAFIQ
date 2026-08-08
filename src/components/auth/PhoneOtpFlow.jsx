@@ -73,8 +73,8 @@ export default function PhoneOtpFlow({ onSuccess }) {
           <label className="text-xs text-slate uppercase tracking-wide font-accent">
             Mobile number
           </label>
-          <div className="flex items-center border border-line mt-1.5 focus-within:border-volt">
-            <span className="px-3 text-slate border-r border-line">+91</span>
+          <div className="flex items-center border border-paper/25 mt-1.5 focus-within:border-volt">
+            <span className="px-3 text-slate border-r border-paper/25">+91</span>
             <input
               type="tel"
               inputMode="numeric"
@@ -123,7 +123,7 @@ export default function PhoneOtpFlow({ onSuccess }) {
             onChange={(e) => handleChangeDigit(idx, e.target.value)}
             maxLength={1}
             inputMode="numeric"
-            className="w-12 h-14 text-center text-xl bg-transparent border border-line focus:border-volt outline-none"
+            className="w-12 h-14 text-center text-xl bg-transparent border border-paper/25 focus:border-volt outline-none"
           />
         ))}
       </div>

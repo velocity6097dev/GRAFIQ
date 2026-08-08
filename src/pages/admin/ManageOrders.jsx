@@ -30,9 +30,9 @@ export default function ManageOrders() {
           onChange={(e) => setFilter(e.target.value)}
           className="bg-panel border border-line px-3 py-2 text-sm font-accent uppercase outline-none"
         >
-          <option value="all">All Statuses</option>
+          <option value="all" style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>All Statuses</option>
           {STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s} style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>{s}</option>
           ))}
         </select>
       </div>
@@ -70,7 +70,9 @@ export default function ManageOrders() {
                       className={`bg-transparent border border-line px-2 py-1 text-xs font-accent uppercase outline-none ${statusTone[o.status]}`}
                     >
                       {STATUSES.map((s) => (
-                        <option key={s} value={s} className="bg-ink text-paper">{s}</option>
+                        <option key={s} value={s} style={{ backgroundColor: '#0D0D0D', color: '#FFFFFF' }}>
+                          {s}
+                        </option>
                       ))}
                     </select>
                   </td>

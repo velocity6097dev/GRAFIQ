@@ -30,14 +30,14 @@ export default function AdminLogin() {
         <p className="text-slate text-sm mb-6">Sign in to manage your store.</p>
         <div className="flex flex-col gap-4">
           <input
-            className="bg-transparent border border-line focus:border-volt outline-none px-3 py-2.5"
+            className="bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2.5"
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
           <input
             type="password"
-            className="bg-transparent border border-line focus:border-volt outline-none px-3 py-2.5"
+            className="bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2.5"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

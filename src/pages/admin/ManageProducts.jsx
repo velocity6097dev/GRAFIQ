@@ -79,7 +79,7 @@ export default function ManageProducts() {
   }
 
   const inputClass =
-    'w-full bg-transparent border border-line focus:border-volt outline-none px-3 py-2 text-sm'
+    'w-full bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2 text-sm'
 
   return (
     <div>
@@ -167,9 +167,11 @@ export default function ManageProducts() {
             value={form.categoryId}
             onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
           >
-            <option value="">Uncategorised</option>
+            <option value="" style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>Uncategorised</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id} style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>
+                {c.name}
+              </option>
             ))}
           </select>
           <input
