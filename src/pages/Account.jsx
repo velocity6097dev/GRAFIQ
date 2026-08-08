@@ -1,4 +1,5 @@
 import { Navigate, Link } from 'react-router-dom'
+import { Truck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useStore } from '../context/StoreContext'
 import { formatPrice } from '../utils/format'
@@ -66,6 +67,15 @@ export default function Account() {
                 <span className="text-slate">Total</span>
                 <span className="font-accent">{formatPrice(order.total, settings.currencySymbol)}</span>
               </div>
+              {order.shipping?.trackingId && (
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-line text-sm">
+                  <Truck size={15} className="text-volt shrink-0" />
+                  <span className="text-slate">
+                    {order.shipping.courierName ? `${order.shipping.courierName} · ` : ''}
+                    Tracking ID: <span className="text-paper">{order.shipping.trackingId}</span>
+                  </span>
+                </div>
+              )}
             </div>
           ))}
         </div>

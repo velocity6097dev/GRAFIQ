@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useStore } from '../../context/StoreContext'
 import MobileMenu from './MobileMenu'
 import CartDrawer from './CartDrawer'
+import logo from '../../assets/logo.png'
 
 const navLinks = [
   { label: 'Home', to: '/' },
@@ -44,9 +45,8 @@ export default function Navbar() {
             <Menu size={22} />
           </button>
 
-          <Link to="/" className="font-display text-2xl tracking-tight">
-            {settings.storeName.slice(0, -1)}
-            <span className="text-volt">{settings.storeName.slice(-1)}</span>
+          <Link to="/" className="flex items-center shrink-0">
+            <img src={logo} alt={settings.storeName} className="h-7 md:h-8 w-auto" />
           </Link>
 
           <nav className="hidden lg:flex items-center gap-8">

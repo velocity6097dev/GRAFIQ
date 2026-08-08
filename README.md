@@ -36,10 +36,18 @@ npm run preview    # preview the production build locally
   garment / colour / size / print placement, live price calculation, adds
   a custom line item to the cart.
 - **Phone + OTP login** for customers, gating checkout (`components/auth`).
-- **Fully custom admin panel** (`/admin`, demo login `admin` / `admin123`):
-  Dashboard, Products (CRUD + stock + discount), Categories (CRUD),
-  Banners (CRUD + reorder + show/hide), Orders (status updates), and
-  Settings (store name, contact info, delivery fee, feature strip copy).
+- **Branded logo** everywhere the old "GRAFIQ" text used to be — navbar,
+  mobile menu, footer, admin sidebar, admin login, and the browser
+  favicon/tab icon (`src/assets/logo.png` for the wide wordmark,
+  `src/assets/logo-square.png` for square/icon spots). Swap those two
+  files to rebrand.
+- **Order tracking & shipping**: the admin Orders page now has a search
+  box (order ID, customer name/phone, or tracking ID) plus a dedicated
+  order detail page (`/admin/orders/:id`) where you can type in a
+  tracking ID manually, or compare live-computed quotes from six mock
+  courier partners and book one with a click — booking auto-fills the
+  tracking ID and bumps the order to "Shipped". Customers see the
+  tracking ID and courier name on their own order history once booked.
 
 All store data (products, categories, banners, settings, orders, cart,
 wishlist, login session) persists to the browser's `localStorage`, so the
@@ -108,6 +116,12 @@ marked with `TODO(production)` comments in the code:
    and creates the order immediately. Replace this with a real gateway
    (Razorpay, Stripe, Cashfree) and only create the order after the
    gateway confirms payment via a server-side webhook.
+
+3. **Shipping partner rates** (`src/utils/shipping.js`, `src/data/shippingPartners.js`) —
+   quotes are computed from a simple weight/zone formula, not real courier
+   APIs. Swap `getShippingQuotes` for a real aggregator's rate-check
+   endpoint (Shiprocket, Shipway, Delhivery One, Pickrr, etc.) to book
+   actual shipments instead of generating a mock tracking ID.
 
 You'll also want a real backend/database once you're ready to go beyond a
 single browser's localStorage — at that point, `StoreContext.jsx` is the

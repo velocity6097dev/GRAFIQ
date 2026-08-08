@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Instagram, Facebook, Twitter } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
+import logo from '../../assets/logo.png'
 
 export default function Footer() {
   const { settings, categories } = useStore()
@@ -24,9 +25,7 @@ export default function Footer() {
 
       <div className="max-w-7xl mx-auto px-4 md:px-8 py-14 grid grid-cols-2 md:grid-cols-4 gap-10">
         <div className="col-span-2 md:col-span-1">
-          <p className="font-display text-2xl mb-3">
-            GRAFI<span className="text-volt">Q</span>
-          </p>
+          <img src={logo} alt={settings.storeName} className="h-8 w-auto mb-3" />
           <p className="text-slate text-sm max-w-xs">{settings.tagline}</p>
           <div className="flex gap-3 mt-4">
             <a href={settings.instagram} target="_blank" rel="noreferrer" className="hover:text-volt">

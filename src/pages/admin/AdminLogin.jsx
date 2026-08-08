@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
+import logo from '../../assets/logo.png'
 
 export default function AdminLogin() {
   const { isAdmin, adminLogin } = useAuth()
@@ -24,10 +25,8 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-ink px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm border border-line p-8">
-        <p className="font-display text-2xl uppercase mb-1">
-          GRAFI<span className="text-volt">Q</span> Admin
-        </p>
-        <p className="text-slate text-sm mb-6">Sign in to manage your store.</p>
+        <img src={logo} alt="GRAFIQ" className="h-9 w-auto mb-2" />
+        <p className="text-slate text-sm mb-6">Admin panel — sign in to manage your store.</p>
         <div className="flex flex-col gap-4">
           <input
             className="bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2.5"

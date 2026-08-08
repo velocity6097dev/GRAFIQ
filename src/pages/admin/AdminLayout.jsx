@@ -10,6 +10,7 @@ import {
   ExternalLink
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import logo from '../../assets/logo.png'
 
 const links = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -29,9 +30,7 @@ export default function AdminLayout() {
     <div className="min-h-screen flex bg-ink text-paper">
       <aside className="w-64 shrink-0 border-r border-line hidden md:flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-line">
-          <span className="font-display text-xl">
-            GRAFI<span className="text-volt">Q</span>
-          </span>
+          <img src={logo} alt="GRAFIQ" className="h-7 w-auto" />
           <span className="text-xs text-slate ml-2 font-accent uppercase">Admin</span>
         </div>
         <nav className="flex-1 py-4 flex flex-col gap-1 px-3">
@@ -68,9 +67,8 @@ export default function AdminLayout() {
 
       <div className="flex-1 min-w-0">
         <header className="h-16 border-b border-line flex items-center justify-between px-4 md:px-8 md:hidden">
-          <span className="font-display text-lg">
-            GRAFI<span className="text-volt">Q</span> Admin
-          </span>
+          <img src={logo} alt="GRAFIQ" className="h-6 w-auto" />
+          <span className="text-xs text-slate font-accent uppercase">Admin</span>
         </header>
         {/* Mobile admin nav */}
         <nav className="md:hidden flex overflow-x-auto border-b border-line px-4 gap-4 scrollbar-none">

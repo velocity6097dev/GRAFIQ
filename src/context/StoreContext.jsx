@@ -92,6 +92,15 @@ export function StoreProvider({ children }) {
   const updateOrderStatus = (id, status) =>
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
 
+  // Merges shipping/tracking info into an order — used both for the manual
+  // "type in a tracking ID" path and for the compare-and-book courier flow.
+  const updateOrderShipping = (id, shippingPatch) =>
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === id ? { ...o, shipping: { ...(o.shipping || {}), ...shippingPatch } } : o
+      )
+    )
+
   const value = useMemo(
     () => ({
       products,
@@ -111,7 +120,8 @@ export function StoreProvider({ children }) {
       reorderBanner,
       updateSettings,
       addOrder,
-      updateOrderStatus
+      updateOrderStatus,
+      updateOrderShipping
     }),
     [products, categories, banners, settings, orders]
   )

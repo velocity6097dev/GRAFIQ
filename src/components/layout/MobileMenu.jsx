@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { NavLink } from 'react-router-dom'
 import { X } from 'lucide-react'
+import logo from '../../assets/logo.png'
 
 export default function MobileMenu({ open, onClose, links }) {
   return (
@@ -22,9 +23,7 @@ export default function MobileMenu({ open, onClose, links }) {
             className="fixed top-0 left-0 h-full w-[80%] max-w-xs bg-ink border-r border-line z-50 flex flex-col"
           >
             <div className="flex items-center justify-between px-5 h-16 border-b border-line">
-              <span className="font-display text-xl">
-                GRAFI<span className="text-volt">Q</span>
-              </span>
+              <img src={logo} alt="GRAFIQ" className="h-6 w-auto" />
               <button onClick={onClose} aria-label="Close menu">
                 <X size={22} />
               </button>

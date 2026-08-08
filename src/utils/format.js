@@ -29,3 +29,9 @@ export function generateOrderId() {
   const rand = Math.floor(100000 + Math.random() * 900000)
   return `GRQ${rand}`
 }
+
+export function generateTrackingId(partnerId = 'trk') {
+  const prefix = partnerId.slice(0, 3).toUpperCase()
+  const rand = Math.floor(1000000000 + Math.random() * 9000000000)
+  return `${prefix}${rand}`
+}

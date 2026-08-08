@@ -114,7 +114,7 @@ export default function PhoneOtpFlow({ onSuccess }) {
           </p>
         )}
       </div>
-      <div className="flex gap-3">
+      <div className="flex gap-3 justify-center">
         {code.map((digit, idx) => (
           <input
             key={idx}

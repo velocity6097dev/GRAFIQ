@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { Eye } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Search, ArrowRight, Truck } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import { formatPrice } from '../../utils/format'
-import Modal from '../../components/ui/Modal'
 
 const STATUSES = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']
 
@@ -15,16 +15,44 @@ const statusTone = {
 }
 
 export default function ManageOrders() {
-  const { orders, updateOrderStatus, settings } = useStore()
-  const [viewOrder, setViewOrder] = useState(null)
+  const { orders, settings } = useStore()
+  const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
 
-  const filtered = filter === 'all' ? orders : orders.filter((o) => o.status === filter)
+  const filtered = useMemo(() => {
+    let list = filter === 'all' ? orders : orders.filter((o) => o.status === filter)
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter(
+        (o) =>
+          o.id.toLowerCase().includes(q) ||
+          o.address?.name?.toLowerCase().includes(q) ||
+          o.address?.phone?.includes(q) ||
+          o.shipping?.trackingId?.toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [orders, filter, search])
 
   return (
     <div>
       <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-        <h1 className="font-display text-3xl uppercase">Orders</h1>
+        <div>
+          <h1 className="font-display text-3xl uppercase">Orders</h1>
+          <p className="text-slate text-sm mt-1">{orders.length} total orders</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3 mb-6">
+        <div className="flex items-center gap-2 border border-paper/25 px-3 py-2 flex-1 min-w-[220px] max-w-sm">
+          <Search size={16} className="text-slate shrink-0" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by order ID, customer, phone, or tracking ID..."
+            className="bg-transparent outline-none flex-1 text-sm min-w-0"
+          />
+        </div>
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -38,10 +66,10 @@ export default function ManageOrders() {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-slate text-sm">No orders match this filter yet.</p>
+        <p className="text-slate text-sm">No orders match this search/filter.</p>
       ) : (
         <div className="border border-line overflow-x-auto">
-          <table className="w-full text-sm min-w-[760px]">
+          <table className="w-full text-sm min-w-[820px]">
             <thead>
               <tr className="border-b border-line text-left text-slate font-accent uppercase text-xs">
                 <th className="p-3">Order ID</th>
@@ -50,6 +78,7 @@ export default function ManageOrders() {
                 <th className="p-3">Items</th>
                 <th className="p-3">Total</th>
                 <th className="p-3">Status</th>
+                <th className="p-3">Tracking</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -57,29 +86,35 @@ export default function ManageOrders() {
               {filtered.map((o) => (
                 <tr key={o.id} className="border-b border-line last:border-0">
                   <td className="p-3 font-accent text-volt">{o.id}</td>
-                  <td className="p-3">{o.address?.name || '—'}</td>
+                  <td className="p-3">
+                    <p>{o.address?.name || '—'}</p>
+                    <p className="text-xs text-slate">{o.address?.phone && `+91 ${o.address.phone}`}</p>
+                  </td>
                   <td className="p-3 text-slate">
                     {new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                   </td>
                   <td className="p-3">{o.items?.length || 0}</td>
                   <td className="p-3">{formatPrice(o.total, settings.currencySymbol)}</td>
+                  <td className={`p-3 font-accent uppercase text-xs ${statusTone[o.status] || 'text-slate'}`}>
+                    {o.status}
+                  </td>
                   <td className="p-3">
-                    <select
-                      value={o.status}
-                      onChange={(e) => updateOrderStatus(o.id, e.target.value)}
-                      className={`bg-transparent border border-line px-2 py-1 text-xs font-accent uppercase outline-none ${statusTone[o.status]}`}
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s} style={{ backgroundColor: '#0D0D0D', color: '#FFFFFF' }}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    {o.shipping?.trackingId ? (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Truck size={13} className="text-volt shrink-0" />
+                        <span className="truncate">{o.shipping.trackingId}</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate">Not booked</span>
+                    )}
                   </td>
                   <td className="p-3 text-right">
-                    <button onClick={() => setViewOrder(o)} aria-label="View order" className="p-1.5 hover:text-volt">
-                      <Eye size={16} />
-                    </button>
+                    <Link
+                      to={`/admin/orders/${o.id}`}
+                      className="inline-flex items-center gap-1 text-xs font-accent uppercase tracking-wide text-paper hover:text-volt"
+                    >
+                      View <ArrowRight size={13} />
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -87,40 +122,6 @@ export default function ManageOrders() {
           </table>
         </div>
       )}
-
-      <Modal open={!!viewOrder} onClose={() => setViewOrder(null)} title={`Order ${viewOrder?.id || ''}`}>
-        {viewOrder && (
-          <div className="flex flex-col gap-5 text-sm">
-            <div>
-              <p className="font-accent uppercase text-volt tracking-wide mb-2">Shipping To</p>
-              <p>{viewOrder.address?.name}</p>
-              <p className="text-slate">{viewOrder.address?.line1}</p>
-              <p className="text-slate">
-                {viewOrder.address?.city}, {viewOrder.address?.state} — {viewOrder.address?.pincode}
-              </p>
-              <p className="text-slate">+91 {viewOrder.address?.phone}</p>
-            </div>
-            <div>
-              <p className="font-accent uppercase text-volt tracking-wide mb-2">Items</p>
-              <div className="flex flex-col gap-2">
-                {viewOrder.items?.map((item) => (
-                  <div key={item.lineId} className="flex justify-between">
-                    <span className="text-slate">
-                      {item.name} × {item.qty} {item.size && `(${item.size})`}
-                    </span>
-                    <span>{formatPrice(item.price * item.qty, settings.currencySymbol)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="border-t border-line pt-4 flex justify-between font-accent text-lg">
-              <span>Total</span>
-              <span className="text-volt">{formatPrice(viewOrder.total, settings.currencySymbol)}</span>
-            </div>
-            <p className="text-xs text-slate uppercase">Payment: {viewOrder.paymentMethod}</p>
-          </div>
-        )}
-      </Modal>
     </div>
   )
 }

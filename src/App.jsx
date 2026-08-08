@@ -19,6 +19,7 @@ import ManageProducts from './pages/admin/ManageProducts'
 import ManageCategories from './pages/admin/ManageCategories'
 import ManageBanners from './pages/admin/ManageBanners'
 import ManageOrders from './pages/admin/ManageOrders'
+import OrderDetail from './pages/admin/OrderDetail'
 import AdminSettings from './pages/admin/Settings'
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="categories" element={<ManageCategories />} />
         <Route path="banners" element={<ManageBanners />} />
         <Route path="orders" element={<ManageOrders />} />
+        <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="settings" element={<AdminSettings />} />
       </Route>
 
