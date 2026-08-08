@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import PhoneOtpFlow from './PhoneOtpFlow'
+import useScrollLock from '../../hooks/useScrollLock'
 
 // Centering via `fixed` + `top/left-1/2` + `-translate-x/y-1/2` is brittle
 // on mobile: if anything on the page causes even slight horizontal
@@ -11,6 +12,8 @@ import PhoneOtpFlow from './PhoneOtpFlow'
 // A flex container that centers its child has no such dependency on
 // viewport width math, so it can't drift regardless of page width.
 export default function OTPModal({ open, onClose, onSuccess }) {
+  useScrollLock(open)
+
   return (
     <AnimatePresence>
       {open && (

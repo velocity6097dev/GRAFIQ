@@ -4,6 +4,9 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import Button from '../ui/Button'
+import globe from '../../assets/brand/globe.webp'
+import barcode from '../../assets/brand/barcode.webp'
+import tapeStroke from '../../assets/brand/paint-stroke-grey.png'
 
 export default function HeroBanner() {
   const { banners } = useStore()
@@ -29,6 +32,7 @@ export default function HeroBanner() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 30 }}
             transition={{ duration: 0.5 }}
+            className="relative z-10"
           >
             <p className="font-accent text-slate tracking-widest text-sm mb-4 uppercase">
               {banner.eyebrow}
@@ -49,8 +53,8 @@ export default function HeroBanner() {
             )}
             <div className="flex flex-wrap items-center gap-4 mt-8">
               {banner.ctaPrimary && (
-                <Button as={Link} to={banner.ctaPrimary.link} variant="primary">
-                  {banner.ctaPrimary.label} <ArrowRight size={16} />
+                <Button as={Link} to={banner.ctaPrimary.link} variant="primary" size="lg">
+                  {banner.ctaPrimary.label} <ArrowRight size={18} />
                 </Button>
               )}
               {banner.ctaSecondary && (
@@ -74,13 +78,50 @@ export default function HeroBanner() {
             transition={{ duration: 0.5 }}
             className="relative"
           >
-            <div className="absolute -top-6 -right-4 tape w-24 h-8 rotate-6 hidden md:block" />
             <img
               src={banner.image}
               alt={banner.titleHighlight1 || banner.titleLine1}
-              className="w-full aspect-[4/5] object-cover border border-line"
+              className="relative z-[1] w-full aspect-[4/5] object-cover border border-line"
             />
-            <div className="absolute -bottom-4 -left-4 tape w-24 h-8 -rotate-3 hidden md:block" />
+
+            {/* torn masking-tape strips pinning the photo down on all sides —
+                sit ABOVE the photo (z-[2] > the photo's z-[1]) so they
+                visibly overlap its edges, like the photo is taped to the
+                page rather than just floating over a matching graphic
+                hidden behind it */}
+            <img
+              src={tapeStroke}
+              alt=""
+              aria-hidden="true"
+              className="absolute -top-5 right-8 w-28 rotate-6 hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
+            />
+            <img
+              src={tapeStroke}
+              alt=""
+              aria-hidden="true"
+              className="absolute -bottom-5 left-8 w-28 -rotate-3 hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
+            />
+            <img
+              src={tapeStroke}
+              alt=""
+              aria-hidden="true"
+              className="absolute top-1/3 -left-7 -translate-y-1/2 w-28 rotate-[100deg] hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
+            />
+            <img
+              src={tapeStroke}
+              alt=""
+              aria-hidden="true"
+              className="absolute top-2/3 -right-7 -translate-y-1/2 w-28 -rotate-[100deg] hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
+            />
+
+            {/* "made to create" badge — from the brand sheet's barcode + globe lockup */}
+            <div className="absolute bottom-3 right-3 md:-bottom-5 md:-right-5 z-10 bg-ink/90 backdrop-blur border border-line px-3 py-2.5 flex items-center gap-2.5 max-w-[220px]">
+              <img src={globe} alt="" aria-hidden="true" className="w-7 h-auto shrink-0" />
+              <img src={barcode} alt="" aria-hidden="true" className="w-10 h-auto shrink-0" />
+              <p className="font-accent text-[10px] leading-tight uppercase tracking-wide text-slate">
+                Made to create.<br />Made to inspire.
+              </p>
+            </div>
           </motion.div>
         </AnimatePresence>
       </div>

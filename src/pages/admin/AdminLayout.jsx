@@ -27,9 +27,9 @@ export default function AdminLayout() {
   if (!isAdmin) return <Navigate to="/admin/login" replace />
 
   return (
-    <div className="min-h-screen flex bg-ink text-paper">
-      <aside className="w-64 shrink-0 border-r border-line hidden md:flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-line">
+    <div className="min-h-screen bg-ink text-paper md:flex">
+      <aside className="w-64 shrink-0 border-r border-line hidden md:flex md:flex-col bg-ink md:fixed md:left-0 md:top-0 md:h-screen md:z-30 md:overflow-y-auto">
+        <div className="h-16 flex items-center px-6 border-b border-line shrink-0">
           <img src={logo} alt="GRAFIQ" className="h-7 w-auto" />
           <span className="text-xs text-slate ml-2 font-accent uppercase">Admin</span>
         </div>
@@ -49,7 +49,7 @@ export default function AdminLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-3 border-t border-line flex flex-col gap-1">
+        <div className="p-3 border-t border-line flex flex-col gap-1 shrink-0">
           <Link
             to="/"
             className="flex items-center gap-3 px-3 py-2.5 text-sm font-accent uppercase tracking-wide text-slate hover:text-paper hover:bg-panel"
@@ -65,7 +65,7 @@ export default function AdminLayout() {
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 md:ml-64">
         <header className="h-16 border-b border-line flex items-center justify-between px-4 md:px-8 md:hidden">
           <img src={logo} alt="GRAFIQ" className="h-6 w-auto" />
           <span className="text-xs text-slate font-accent uppercase">Admin</span>

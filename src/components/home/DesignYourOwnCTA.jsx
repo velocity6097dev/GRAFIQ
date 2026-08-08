@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import Button from '../ui/Button'
+import stripX from '../../assets/brand/strip-x.webp'
+import paintStroke from '../../assets/brand/paint-stroke.webp'
 
 export default function DesignYourOwnCTA() {
   return (
@@ -13,7 +15,19 @@ export default function DesignYourOwnCTA() {
         transition={{ duration: 0.5 }}
         className="relative border border-line bg-panel grid md:grid-cols-2 items-center overflow-hidden"
       >
-        <div className="p-8 md:p-14">
+        <img
+          src={paintStroke}
+          alt=""
+          aria-hidden="true"
+          className="absolute -top-10 -left-10 w-64 opacity-[0.07] pointer-events-none select-none"
+        />
+        <img
+          src={stripX}
+          alt=""
+          aria-hidden="true"
+          className="absolute -top-6 right-6 w-24 md:w-32 opacity-80 pointer-events-none select-none hidden sm:block"
+        />
+        <div className="relative p-8 md:p-14">
           <p className="font-accent text-volt tracking-widest text-sm mb-2">Your idea. Our creation.</p>
           <h2 className="font-display text-3xl md:text-5xl uppercase leading-none mb-4">
             Design <span className="text-volt">Your Own</span>
@@ -37,3 +51,4 @@ export default function DesignYourOwnCTA() {
     </section>
   )
 }
+

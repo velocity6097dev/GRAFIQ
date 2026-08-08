@@ -36,16 +36,16 @@ export default function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-40 bg-ink/95 backdrop-blur border-b border-line">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 grid grid-cols-3 items-center lg:flex lg:justify-between">
           <button
-            className="lg:hidden p-2 -ml-2"
+            className="lg:hidden p-2 -ml-2 justify-self-start"
             onClick={() => setMenuOpen(true)}
             aria-label="Open menu"
           >
             <Menu size={22} />
           </button>
 
-          <Link to="/" className="flex items-center shrink-0">
+          <Link to="/" className="flex items-center justify-center lg:justify-start shrink-0">
             <img src={logo} alt={settings.storeName} className="h-7 md:h-8 w-auto" />
           </Link>
 
@@ -55,7 +55,7 @@ export default function Navbar() {
                 key={link.to}
                 to={link.to}
                 className={({ isActive }) =>
-                  `font-accent text-sm tracking-wide uppercase transition-colors ${
+                  `font-accent text-base tracking-wide uppercase transition-colors ${
                     isActive ? 'text-volt' : 'text-paper hover:text-volt'
                   }`
                 }
@@ -65,7 +65,7 @@ export default function Navbar() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-1 md:gap-2">
+          <div className="flex items-center justify-end gap-1 md:gap-2">
             <button
               className="p-2 hover:text-volt"
               onClick={() => setSearchOpen((v) => !v)}

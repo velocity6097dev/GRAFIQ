@@ -2,8 +2,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { NavLink } from 'react-router-dom'
 import { X } from 'lucide-react'
 import logo from '../../assets/logo.png'
+import useScrollLock from '../../hooks/useScrollLock'
 
 export default function MobileMenu({ open, onClose, links }) {
+  useScrollLock(open)
+
   return (
     <AnimatePresence>
       {open && (
@@ -20,7 +23,7 @@ export default function MobileMenu({ open, onClose, links }) {
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'tween', duration: 0.3 }}
-            className="fixed top-0 left-0 h-full w-[80%] max-w-xs bg-ink border-r border-line z-50 flex flex-col"
+            className="fixed inset-y-0 left-0 w-[80%] max-w-xs bg-ink border-r border-line z-50 flex flex-col overflow-y-auto"
           >
             <div className="flex items-center justify-between px-5 h-16 border-b border-line">
               <img src={logo} alt="GRAFIQ" className="h-6 w-auto" />

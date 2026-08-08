@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom'
 import { Instagram, Facebook, Twitter } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import logo from '../../assets/logo.png'
+import xMarks from '../../assets/brand/x-marks.webp'
+import barcode from '../../assets/brand/barcode.webp'
 
 export default function Footer() {
   const { settings, categories } = useStore()
@@ -72,9 +74,15 @@ export default function Footer() {
         </div>
       </div>
 
-      <div className="border-t border-line px-4 md:px-8 py-5 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-slate">
-        <span>© {new Date().getFullYear()} {settings.storeName}. All rights reserved.</span>
-        <span>Made with heavyweight cotton and bad intentions.</span>
+      <div className="border-t border-line px-4 md:px-8 py-5 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate">
+        <div className="flex items-center gap-4">
+          <img src={xMarks} alt="" aria-hidden="true" className="h-4 w-auto opacity-70 hidden sm:block" />
+          <span>© {new Date().getFullYear()} {settings.storeName}. All rights reserved.</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="hidden sm:inline">Made with heavyweight cotton and bad intentions.</span>
+          <img src={barcode} alt={settings.storeName} className="h-7 w-auto" />
+        </div>
       </div>
     </footer>
   )

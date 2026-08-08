@@ -5,10 +5,12 @@ import { useCart } from '../../context/CartContext'
 import { useStore } from '../../context/StoreContext'
 import { formatPrice, getDiscountedPrice } from '../../utils/format'
 import Button from '../ui/Button'
+import useScrollLock from '../../hooks/useScrollLock'
 
 export default function CartDrawer({ open, onClose }) {
   const { items, removeFromCart, updateQty, payable, count } = useCart()
   const { settings } = useStore()
+  useScrollLock(open)
 
   return (
     <AnimatePresence>
@@ -26,7 +28,7 @@ export default function CartDrawer({ open, onClose }) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.3 }}
-            className="fixed top-0 right-0 h-full w-full max-w-md bg-ink border-l border-line z-50 flex flex-col"
+            className="fixed inset-y-0 right-0 w-full max-w-md bg-ink border-l border-line z-50 flex flex-col"
           >
             <div className="flex items-center justify-between px-5 h-16 border-b border-line shrink-0">
               <span className="font-accent text-lg tracking-wide uppercase">

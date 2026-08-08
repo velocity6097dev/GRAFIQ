@@ -1,9 +1,12 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
+import useScrollLock from '../../hooks/useScrollLock'
 
 // See OTPModal.jsx for why this uses flex-centering instead of
 // fixed + top/left-1/2 + translate.
 export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }) {
+  useScrollLock(open)
+
   return (
     <AnimatePresence>
       {open && (

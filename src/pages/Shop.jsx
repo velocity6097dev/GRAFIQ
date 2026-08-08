@@ -4,6 +4,7 @@ import { SlidersHorizontal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '../context/StoreContext'
 import ProductCard from '../components/product/ProductCard'
+import useScrollLock from '../hooks/useScrollLock'
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },
@@ -16,6 +17,7 @@ export default function Shop() {
   const { products, categories } = useStore()
   const [params, setParams] = useSearchParams()
   const [filtersOpen, setFiltersOpen] = useState(false)
+  useScrollLock(filtersOpen)
 
   const activeCategory = params.get('category') || ''
   const query = (params.get('q') || '').toLowerCase()
@@ -149,7 +151,7 @@ export default function Shop() {
                 animate={{ x: 0 }}
                 exit={{ x: '-100%' }}
                 transition={{ type: 'tween', duration: 0.3 }}
-                className="fixed top-0 left-0 h-full w-[80%] max-w-xs bg-ink border-r border-line z-50 p-6 overflow-y-auto lg:hidden"
+                className="fixed inset-y-0 left-0 w-[80%] max-w-xs bg-ink border-r border-line z-50 p-6 overflow-y-auto lg:hidden"
               >
                 <div className="flex justify-between items-center mb-6">
                   <p className="font-accent uppercase tracking-wide">Filters</p>
