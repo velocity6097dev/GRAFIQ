@@ -39,8 +39,14 @@ export default function OTPModal({ open, onClose, onSuccess }) {
             </div>
             <PhoneOtpFlow
               onSuccess={() => {
+                // Only fire onSuccess here — onClose is for when the
+                // person dismisses the modal (X / backdrop) *without*
+                // completing verification. Calling both meant a
+                // successful OTP still triggered Checkout's onClose
+                // handler, which navigates back to the cart — so
+                // verifying successfully was bouncing people straight
+                // out of checkout instead of letting them continue.
                 onSuccess?.()
-                onClose?.()
               }}
             />
           </motion.div>

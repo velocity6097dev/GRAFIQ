@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Heart } from 'lucide-react'
 import PriceTag from './PriceTag'
 import Badge from '../ui/Badge'
+import LoadingImage from '../ui/LoadingImage'
 import { useWishlist } from '../../context/WishlistContext'
 
 export default function ProductCard({ product }) {
@@ -33,10 +34,11 @@ export default function ProductCard({ product }) {
 
       <Link to={`/product/${product.id}`} className="block">
         <div className="relative aspect-[4/5] overflow-hidden bg-ink">
-          <img
+          <LoadingImage
             src={product.images?.[0]}
             alt={product.name}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className="absolute inset-0"
+            imgClassName="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
           {product.images?.[1] && (
             <img

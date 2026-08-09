@@ -7,6 +7,7 @@ import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import PriceTag from '../components/product/PriceTag'
 import Button from '../components/ui/Button'
+import LoadingImage from '../components/ui/LoadingImage'
 import RecommendedSlider from '../components/home/RecommendedSlider'
 
 export default function ProductDetail() {
@@ -72,10 +73,12 @@ export default function ProductDetail() {
       <div className="grid md:grid-cols-2 gap-10">
         <div>
           <div className="aspect-[4/5] bg-panel border border-line overflow-hidden mb-3">
-            <img
+            <LoadingImage
               src={product.images[activeImage]}
               alt={product.name}
-              className="w-full h-full object-cover"
+              className="w-full h-full"
+              imgClassName="w-full h-full object-cover"
+              loaderSize={56}
             />
           </div>
           <div className="flex gap-3">

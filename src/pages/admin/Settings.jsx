@@ -55,7 +55,12 @@ export default function Settings() {
           <p className="font-accent uppercase tracking-wide text-volt mb-4">Store Info</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <input className={inputClass} placeholder="Store name" value={form.storeName} onChange={set('storeName')} />
-            <input className={inputClass} placeholder="Currency symbol" value={form.currencySymbol} onChange={set('currencySymbol')} />
+            <input
+              className={`${inputClass} opacity-50 cursor-not-allowed`}
+              value="₹  (fixed — India-only store)"
+              disabled
+              title="Currency is fixed to ₹ across the site and isn't editable."
+            />
             <input className={`${inputClass} sm:col-span-2`} placeholder="Tagline" value={form.tagline} onChange={set('tagline')} />
             <input className={`${inputClass} sm:col-span-2`} placeholder="Footer ticker text" value={form.tickerText} onChange={set('tickerText')} />
           </div>

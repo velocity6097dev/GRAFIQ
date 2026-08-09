@@ -1,6 +1,11 @@
-export function formatPrice(value, symbol = '₹') {
+// GRAFIQ ships for the India market only, so the currency is hardcoded
+// here rather than left editable — an accidental blank/wrong symbol in
+// admin settings should never affect what shoppers see. The second
+// argument is intentionally ignored (kept so any leftover
+// formatPrice(x, settings.currencySymbol) call sites don't need edits).
+export function formatPrice(value) {
   const n = Number(value) || 0
-  return `${symbol}${n.toLocaleString('en-IN')}`
+  return `₹${n.toLocaleString('en-IN')}`
 }
 
 // Returns { finalPrice, hasDiscount } after applying a % discount to a base price.

@@ -4,8 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import Button from '../ui/Button'
-import globe from '../../assets/brand/globe.webp'
-import barcode from '../../assets/brand/barcode.webp'
+import LoadingImage from '../ui/LoadingImage'
 
 export default function HeroBanner() {
   const { banners } = useStore()
@@ -77,20 +76,12 @@ export default function HeroBanner() {
             transition={{ duration: 0.5 }}
             className="relative"
           >
-            <img
+            <LoadingImage
               src={banner.image}
               alt={banner.titleHighlight1 || banner.titleLine1}
-              className="relative z-[1] w-full aspect-[4/5] object-cover border border-line"
+              className="relative z-[1] w-full aspect-[4/5] border border-line"
+              imgClassName="w-full h-full object-cover"
             />
-
-            {/* "made to create" badge — from the brand sheet's barcode + globe lockup */}
-            <div className="absolute bottom-3 right-3 md:-bottom-5 md:-right-5 z-10 bg-ink/90 backdrop-blur border border-line px-3 py-2.5 flex items-center gap-2.5 max-w-[220px]">
-              <img src={globe} alt="" aria-hidden="true" className="w-7 h-auto shrink-0" />
-              <img src={barcode} alt="" aria-hidden="true" className="w-10 h-auto shrink-0" />
-              <p className="font-accent text-[10px] leading-tight uppercase tracking-wide text-slate">
-                Made to create.<br />Made to inspire.
-              </p>
-            </div>
           </motion.div>
         </AnimatePresence>
       </div>

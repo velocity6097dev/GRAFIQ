@@ -5,6 +5,7 @@ import { useCart } from '../../context/CartContext'
 import { useStore } from '../../context/StoreContext'
 import { formatPrice, getDiscountedPrice } from '../../utils/format'
 import Button from '../ui/Button'
+import LoadingImage from '../ui/LoadingImage'
 import useScrollLock from '../../hooks/useScrollLock'
 
 export default function CartDrawer({ open, onClose }) {
@@ -53,10 +54,12 @@ export default function CartDrawer({ open, onClose }) {
                   const { finalPrice } = getDiscountedPrice(item.price, item.discount)
                   return (
                     <div key={item.lineId} className="flex gap-4 border-b border-line pb-5">
-                      <img
+                      <LoadingImage
                         src={item.image}
                         alt={item.name}
-                        className="w-20 h-24 object-cover bg-panel shrink-0"
+                        className="w-20 h-24 shrink-0"
+                        imgClassName="w-full h-full object-cover"
+                        loaderSize={24}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between gap-2">

@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import StoreLayout from './StoreLayout'
+import BootLoader from './components/ui/BootLoader'
 import Home from './pages/Home'
 import Shop from './pages/Shop'
 import ProductDetail from './pages/ProductDetail'
@@ -24,45 +25,48 @@ import AdminSettings from './pages/admin/Settings'
 
 export default function App() {
   return (
-    <Routes>
-      {/* Public storefront */}
-      <Route element={<StoreLayout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/shop" element={<Shop />} />
-        <Route path="/product/:id" element={<ProductDetail />} />
-        <Route path="/design-your-own" element={<DesignYourOwn />} />
-        <Route path="/cart" element={<Cart />} />
-        <Route path="/checkout" element={<Checkout />} />
-        <Route path="/order-success/:orderId" element={<OrderSuccess />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/account" element={<Account />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/contact" element={<Contact />} />
-      </Route>
+    <>
+      <BootLoader />
+      <Routes>
+        {/* Public storefront */}
+        <Route element={<StoreLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/shop" element={<Shop />} />
+          <Route path="/product/:id" element={<ProductDetail />} />
+          <Route path="/design-your-own" element={<DesignYourOwn />} />
+          <Route path="/cart" element={<Cart />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/order-success/:orderId" element={<OrderSuccess />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+        </Route>
 
-      {/* Admin panel — separate auth, separate shell */}
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="products" element={<ManageProducts />} />
-        <Route path="categories" element={<ManageCategories />} />
-        <Route path="banners" element={<ManageBanners />} />
-        <Route path="orders" element={<ManageOrders />} />
-        <Route path="orders/:id" element={<OrderDetail />} />
-        <Route path="settings" element={<AdminSettings />} />
-      </Route>
+        {/* Admin panel — separate auth, separate shell */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="products" element={<ManageProducts />} />
+          <Route path="categories" element={<ManageCategories />} />
+          <Route path="banners" element={<ManageBanners />} />
+          <Route path="orders" element={<ManageOrders />} />
+          <Route path="orders/:id" element={<OrderDetail />} />
+          <Route path="settings" element={<AdminSettings />} />
+        </Route>
 
-      {/* Fallback */}
-      <Route
-        path="*"
-        element={
-          <div className="min-h-screen flex flex-col items-center justify-center bg-ink text-paper gap-4">
-            <p className="font-display text-4xl">404</p>
-            <p className="text-slate">This page doesn't exist.</p>
-            <a href="/" className="text-volt font-accent uppercase tracking-wide">Back Home</a>
-          </div>
-        }
-      />
-    </Routes>
+        {/* Fallback */}
+        <Route
+          path="*"
+          element={
+            <div className="min-h-screen flex flex-col items-center justify-center bg-ink text-paper gap-4">
+              <p className="font-display text-4xl">404</p>
+              <p className="text-slate">This page doesn't exist.</p>
+              <a href="/" className="text-volt font-accent uppercase tracking-wide">Back Home</a>
+            </div>
+          }
+        />
+      </Routes>
+    </>
   )
 }

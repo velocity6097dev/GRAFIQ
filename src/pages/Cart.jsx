@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext'
 import { useStore } from '../context/StoreContext'
 import { formatPrice, getDiscountedPrice } from '../utils/format'
 import Button from '../components/ui/Button'
+import LoadingImage from '../components/ui/LoadingImage'
 
 export default function Cart() {
   const { items, removeFromCart, updateQty, subtotal, discountTotal, payable } = useCart()
@@ -30,7 +31,13 @@ export default function Cart() {
             const { finalPrice } = getDiscountedPrice(item.price, item.discount)
             return (
               <div key={item.lineId} className="flex gap-4 border border-line p-4">
-                <img src={item.image} alt={item.name} className="w-24 h-28 object-cover bg-panel shrink-0" />
+                <LoadingImage
+                  src={item.image}
+                  alt={item.name}
+                  className="w-24 h-28 shrink-0"
+                  imgClassName="w-full h-full object-cover"
+                  loaderSize={28}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between gap-2">
                     <div>

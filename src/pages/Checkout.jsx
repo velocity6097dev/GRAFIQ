@@ -10,6 +10,7 @@ import AddressForm from '../components/checkout/AddressForm'
 import PaymentOptions from '../components/checkout/PaymentOptions'
 import OTPModal from '../components/auth/OTPModal'
 import Button from '../components/ui/Button'
+import CircleLoader from '../components/ui/CircleLoader'
 
 const emptyAddress = { name: '', phone: '', pincode: '', line1: '', city: '', state: '' }
 
@@ -99,7 +100,7 @@ export default function Checkout() {
         name: 'GRAFIQ',
         description: `Order payment — ${items.length} item${items.length > 1 ? 's' : ''}`,
         prefill: { contact: user?.phone, name: address.name },
-        theme: { color: '#CAD600' },
+        theme: { color: '#000000' },
         handler: async (response) => {
           try {
             const order = await verifyRazorpayPayment({
@@ -160,6 +161,15 @@ export default function Checkout() {
       <h1 className="font-display text-3xl md:text-4xl uppercase mb-8">Checkout</h1>
 
       <OTPModal open={otpOpen} onClose={() => navigate('/cart')} onSuccess={() => setOtpOpen(false)} />
+
+      {placing && (
+        <div className="fixed inset-0 z-50 bg-ink/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+          <CircleLoader size={100} />
+          <p className="font-accent uppercase tracking-widest text-sm text-slate">
+            {payment === 'cod' ? 'Placing your order…' : 'Setting up secure payment…'}
+          </p>
+        </div>
+      )}
 
       {!otpOpen && (
         <div className="grid lg:grid-cols-[1fr_360px] gap-10">
