@@ -6,7 +6,6 @@ import { useStore } from '../../context/StoreContext'
 import Button from '../ui/Button'
 import globe from '../../assets/brand/globe.webp'
 import barcode from '../../assets/brand/barcode.webp'
-import tapeStroke from '../../assets/brand/paint-stroke-grey.png'
 
 export default function HeroBanner() {
   const { banners } = useStore()
@@ -82,36 +81,6 @@ export default function HeroBanner() {
               src={banner.image}
               alt={banner.titleHighlight1 || banner.titleLine1}
               className="relative z-[1] w-full aspect-[4/5] object-cover border border-line"
-            />
-
-            {/* torn masking-tape strips pinning the photo down on all sides —
-                sit ABOVE the photo (z-[2] > the photo's z-[1]) so they
-                visibly overlap its edges, like the photo is taped to the
-                page rather than just floating over a matching graphic
-                hidden behind it */}
-            <img
-              src={tapeStroke}
-              alt=""
-              aria-hidden="true"
-              className="absolute -top-5 right-8 w-28 rotate-6 hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
-            />
-            <img
-              src={tapeStroke}
-              alt=""
-              aria-hidden="true"
-              className="absolute -bottom-5 left-8 w-28 -rotate-3 hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
-            />
-            <img
-              src={tapeStroke}
-              alt=""
-              aria-hidden="true"
-              className="absolute top-1/3 -left-7 -translate-y-1/2 w-28 rotate-[100deg] hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
-            />
-            <img
-              src={tapeStroke}
-              alt=""
-              aria-hidden="true"
-              className="absolute top-2/3 -right-7 -translate-y-1/2 w-28 -rotate-[100deg] hidden md:block z-[2] pointer-events-none select-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.4)]"
             />
 
             {/* "made to create" badge — from the brand sheet's barcode + globe lockup */}

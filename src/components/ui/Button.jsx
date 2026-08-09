@@ -11,8 +11,8 @@ const variants = {
 }
 
 const sizes = {
-  md: 'px-7 py-3.5 text-sm',
-  lg: 'px-10 py-5 text-base'
+  md: 'px-7 py-4 text-sm min-h-[3rem]',
+  lg: 'px-10 py-6 text-base min-h-[3.75rem]'
 }
 
 // NOTE: this used to wrap the button in a separate `motion.div` (for the

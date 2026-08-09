@@ -2,7 +2,12 @@
 
 A full React storefront for custom-printed clothing, built to match the GRAFIQ
 brand sheet (black/acid-lime, Anton/Bebas Neue/Barlow, grunge-tape aesthetic).
-Built with **React + React Router + Tailwind CSS + Framer Motion**.
+Built with **React + React Router + Tailwind CSS + Framer Motion**, backed by
+**MySQL via a small PHP API** (see `grafiq-api/`).
+
+> **Setting this up for the first time?** See
+> [`DATABASE_SETUP.md`](./DATABASE_SETUP.md) for the XAMPP/MySQL steps —
+> do that first, then come back here.
 
 ## Quick start
 
@@ -10,6 +15,10 @@ Built with **React + React Router + Tailwind CSS + Framer Motion**.
 npm install
 npm run dev       # http://localhost:5173
 ```
+
+This assumes the PHP API is already running via XAMPP at
+`http://localhost/grafiq-api` (see `DATABASE_SETUP.md`). Without it, the
+site still loads using bundled demo data, but nothing will save.
 
 Build for production:
 

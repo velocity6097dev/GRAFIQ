@@ -10,6 +10,7 @@ import {
   ExternalLink
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { useStore } from '../../context/StoreContext'
 import logo from '../../assets/logo.png'
 
 const links = [
@@ -23,6 +24,7 @@ const links = [
 
 export default function AdminLayout() {
   const { isAdmin, adminLogout } = useAuth()
+  const { dbStatus, dbError } = useStore()
 
   if (!isAdmin) return <Navigate to="/admin/login" replace />
 
@@ -88,6 +90,12 @@ export default function AdminLayout() {
           ))}
         </nav>
         <main className="p-4 md:p-8">
+          {dbStatus === 'error' && (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-xs sm:text-sm px-4 py-2 mb-6">
+              Not connected to the database — showing demo data only, changes won't save.{' '}
+              {dbError && <span className="opacity-80">({dbError})</span>}
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../../context/StoreContext'
 import Button from '../../components/ui/Button'
 
@@ -9,6 +9,15 @@ export default function Settings() {
   const { settings, updateSettings } = useStore()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  // `settings` arrives from the database a beat after first render (and
+  // again after any save elsewhere), so keep the form in sync with it
+  // rather than only reading it once via useState's initial value.
+  useEffect(() => {
+    setForm(settings)
+  }, [settings])
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
 
@@ -18,15 +27,23 @@ export default function Settings() {
       features: form.features.map((f) => (f.id === id ? { ...f, [key]: value } : f))
     })
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault()
-    updateSettings({
-      ...form,
-      deliveryFee: Number(form.deliveryFee),
-      freeDeliveryAbove: Number(form.freeDeliveryAbove)
-    })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setSaving(true)
+    setError('')
+    try {
+      await updateSettings({
+        ...form,
+        deliveryFee: Number(form.deliveryFee),
+        freeDeliveryAbove: Number(form.freeDeliveryAbove)
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      setError(err.message || 'Could not save settings.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -92,8 +109,11 @@ export default function Settings() {
         </section>
 
         <div className="flex items-center gap-4">
-          <Button type="submit" variant="primary">Save Settings</Button>
+          <Button type="submit" variant="primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save Settings'}
+          </Button>
           {saved && <span className="text-volt text-sm">Saved ✓</span>}
+          {error && <span className="text-red-400 text-sm">{error}</span>}
         </div>
       </form>
     </div>

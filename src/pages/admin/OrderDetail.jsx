@@ -26,6 +26,7 @@ export default function OrderDetail() {
   const [trackingSaved, setTrackingSaved] = useState(false)
   const [showCompare, setShowCompare] = useState(!order?.shipping?.trackingId)
   const [bookingId, setBookingId] = useState(null)
+  const [actionError, setActionError] = useState('')
 
   const quotes = useMemo(
     () => (order ? getShippingQuotes(order, shippingPartners) : []),
@@ -43,10 +44,14 @@ export default function OrderDetail() {
     )
   }
 
-  const handleSaveTracking = () => {
-    updateOrderShipping(order.id, { trackingId: trackingInput.trim() })
-    setTrackingSaved(true)
-    setTimeout(() => setTrackingSaved(false), 2000)
+  const handleSaveTracking = async () => {
+    try {
+      await updateOrderShipping(order.id, { trackingId: trackingInput.trim() })
+      setTrackingSaved(true)
+      setTimeout(() => setTrackingSaved(false), 2000)
+    } catch (err) {
+      setActionError(err.message || 'Could not save the tracking ID.')
+    }
   }
 
   // NOTE: booking is simulated with a short delay and a generated tracking
@@ -56,21 +61,27 @@ export default function OrderDetail() {
   // for a real rate-check call.
   const handleBook = (quote) => {
     setBookingId(quote.partner.id)
-    setTimeout(() => {
-      const trackingId = generateTrackingId(quote.partner.id)
-      updateOrderShipping(order.id, {
-        courierId: quote.partner.id,
-        courierName: quote.partner.name,
-        cost: quote.price,
-        trackingId,
-        bookedAt: new Date().toISOString()
-      })
-      if (order.status === 'Pending' || order.status === 'Processing') {
-        updateOrderStatus(order.id, 'Shipped')
+    setActionError('')
+    setTimeout(async () => {
+      try {
+        const trackingId = generateTrackingId(quote.partner.id)
+        await updateOrderShipping(order.id, {
+          courierId: quote.partner.id,
+          courierName: quote.partner.name,
+          cost: quote.price,
+          trackingId,
+          bookedAt: new Date().toISOString()
+        })
+        if (order.status === 'Pending' || order.status === 'Processing') {
+          await updateOrderStatus(order.id, 'Shipped')
+        }
+        setTrackingInput(trackingId)
+        setShowCompare(false)
+      } catch (err) {
+        setActionError(err.message || 'Could not book this courier.')
+      } finally {
+        setBookingId(null)
       }
-      setTrackingInput(trackingId)
-      setBookingId(null)
-      setShowCompare(false)
     }, 900)
   }
 
@@ -91,7 +102,7 @@ export default function OrderDetail() {
         </div>
         <select
           value={order.status}
-          onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+          onChange={(e) => updateOrderStatus(order.id, e.target.value).catch((err) => setActionError(err.message))}
           className={`bg-panel border border-line px-3 py-2 text-sm font-accent uppercase outline-none ${statusTone[order.status]}`}
         >
           {STATUSES.map((s) => (
@@ -99,6 +110,8 @@ export default function OrderDetail() {
           ))}
         </select>
       </div>
+
+      {actionError && <p className="text-red-400 text-sm mb-6">{actionError}</p>}
 
       <div className="grid lg:grid-cols-[1fr_380px] gap-8">
         {/* Left: customer, items, payment */}

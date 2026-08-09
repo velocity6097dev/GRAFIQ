@@ -1,105 +1,171 @@
-import { createContext, useContext, useMemo } from 'react'
-import useLocalStorage from '../hooks/useLocalStorage'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { api } from '../api/client'
 import defaultProducts from '../data/products'
 import defaultCategories from '../data/categories'
 import defaultBanners from '../data/banners'
 import defaultSettings from '../data/settings'
-import { generateId, generateOrderId, slugify } from '../utils/format'
 
 const StoreContext = createContext(null)
 
+// All store data now lives in MySQL (see /grafiq-api) instead of
+// localStorage. The default*.js imports are only used as an initial
+// "skeleton" so the page has something to render for the instant before
+// the first fetch resolves — everything is replaced with live database
+// data as soon as it arrives, and every write (add/update/delete) goes
+// straight to the API.
 export function StoreProvider({ children }) {
-  const [products, setProducts] = useLocalStorage('grafiq_products', defaultProducts)
-  const [categories, setCategories] = useLocalStorage('grafiq_categories', defaultCategories)
-  const [banners, setBanners] = useLocalStorage('grafiq_banners', defaultBanners)
-  const [settings, setSettings] = useLocalStorage('grafiq_settings', defaultSettings)
-  const [orders, setOrders] = useLocalStorage('grafiq_orders', [])
+  const [products, setProducts] = useState(defaultProducts)
+  const [categories, setCategories] = useState(defaultCategories)
+  const [banners, setBanners] = useState(defaultBanners)
+  const [settings, setSettings] = useState(defaultSettings)
+  const [orders, setOrders] = useState([])
+
+  const [loading, setLoading] = useState(true)
+  // 'connected' | 'error' | 'checking' — surfaced so the UI can warn the
+  // person if XAMPP/MySQL isn't reachable instead of failing silently.
+  const [dbStatus, setDbStatus] = useState('checking')
+  const [dbError, setDbError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadAll() {
+      try {
+        const [productsRes, categoriesRes, bannersRes, settingsRes, ordersRes] = await Promise.all([
+          api.get('/products.php'),
+          api.get('/categories.php'),
+          api.get('/banners.php'),
+          api.get('/settings.php'),
+          api.get('/orders.php')
+        ])
+        if (cancelled) return
+        setProducts(productsRes)
+        setCategories(categoriesRes)
+        setBanners(bannersRes)
+        setSettings(settingsRes)
+        setOrders(ordersRes)
+        setDbStatus('connected')
+      } catch (err) {
+        if (cancelled) return
+        console.warn('Falling back to demo data — could not load from the database:', err)
+        setDbStatus('error')
+        setDbError(err.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadAll()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // ---------- Products ----------
-  const addProduct = (product) =>
-    setProducts((prev) => [...prev, { ...product, id: generateId('p') }])
+  const addProduct = async (product) => {
+    const created = await api.post('/products.php', product)
+    setProducts((prev) => [created, ...prev])
+    return created
+  }
 
-  const updateProduct = (id, patch) =>
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+  const updateProduct = async (id, patch) => {
+    const updated = await api.put(`/products.php?id=${id}`, patch)
+    setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+    return updated
+  }
 
-  const deleteProduct = (id) =>
+  const deleteProduct = async (id) => {
+    await api.del(`/products.php?id=${id}`)
     setProducts((prev) => prev.filter((p) => p.id !== id))
+  }
 
   // ---------- Categories ----------
-  const addCategory = (category) =>
-    setCategories((prev) => [
-      ...prev,
-      { ...category, id: generateId('cat'), slug: slugify(category.name) }
-    ])
+  const addCategory = async (category) => {
+    const created = await api.post('/categories.php', category)
+    setCategories((prev) => [...prev, created])
+    return created
+  }
 
-  const updateCategory = (id, patch) =>
-    setCategories((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? { ...c, ...patch, slug: patch.name ? slugify(patch.name) : c.slug }
-          : c
-      )
-    )
+  const updateCategory = async (id, patch) => {
+    const updated = await api.put(`/categories.php?id=${id}`, patch)
+    setCategories((prev) => prev.map((c) => (c.id === id ? updated : c)))
+    return updated
+  }
 
-  const deleteCategory = (id) => {
+  const deleteCategory = async (id) => {
+    await api.del(`/categories.php?id=${id}`)
     setCategories((prev) => prev.filter((c) => c.id !== id))
-    // orphaned products fall back to "uncategorised" rather than disappearing
-    setProducts((prev) =>
-      prev.map((p) => (p.categoryId === id ? { ...p, categoryId: null } : p))
-    )
+    // Mirrors the DB's ON DELETE SET NULL — orphaned products fall back
+    // to "uncategorised" rather than disappearing.
+    setProducts((prev) => prev.map((p) => (p.categoryId === id ? { ...p, categoryId: null } : p)))
   }
 
   // ---------- Banners ----------
-  const addBanner = (banner) =>
-    setBanners((prev) => [
-      ...prev,
-      { ...banner, id: generateId('b'), order: prev.length + 1, active: true }
-    ])
+  const addBanner = async (banner) => {
+    const created = await api.post('/banners.php', banner)
+    setBanners((prev) => [...prev, created])
+    return created
+  }
 
-  const updateBanner = (id, patch) =>
-    setBanners((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)))
+  const updateBanner = async (id, patch) => {
+    const updated = await api.put(`/banners.php?id=${id}`, patch)
+    setBanners((prev) => prev.map((b) => (b.id === id ? updated : b)))
+    return updated
+  }
 
-  const deleteBanner = (id) =>
+  const deleteBanner = async (id) => {
+    await api.del(`/banners.php?id=${id}`)
     setBanners((prev) => prev.filter((b) => b.id !== id))
+  }
 
-  const reorderBanner = (id, direction) =>
-    setBanners((prev) => {
-      const sorted = [...prev].sort((a, b) => a.order - b.order)
-      const idx = sorted.findIndex((b) => b.id === id)
-      const swapWith = direction === 'up' ? idx - 1 : idx + 1
-      if (swapWith < 0 || swapWith >= sorted.length) return prev
-      const tmp = sorted[idx].order
-      sorted[idx].order = sorted[swapWith].order
-      sorted[swapWith].order = tmp
-      return sorted
-    })
+  const reorderBanner = async (id, direction) => {
+    const sorted = [...banners].sort((a, b) => a.order - b.order)
+    const idx = sorted.findIndex((b) => b.id === id)
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1
+    if (swapWith < 0 || swapWith >= sorted.length) return
+
+    const a = sorted[idx]
+    const b = sorted[swapWith]
+    const [updatedA, updatedB] = await Promise.all([
+      api.put(`/banners.php?id=${a.id}`, { order: b.order }),
+      api.put(`/banners.php?id=${b.id}`, { order: a.order })
+    ])
+    setBanners((prev) =>
+      prev.map((banner) => {
+        if (banner.id === updatedA.id) return updatedA
+        if (banner.id === updatedB.id) return updatedB
+        return banner
+      })
+    )
+  }
 
   // ---------- Settings ----------
-  const updateSettings = (patch) => setSettings((prev) => ({ ...prev, ...patch }))
+  const updateSettings = async (patch) => {
+    const updated = await api.put('/settings.php', patch)
+    setSettings(updated)
+    return updated
+  }
 
   // ---------- Orders ----------
-  const addOrder = (orderData) => {
-    const order = {
-      id: generateOrderId(),
-      status: 'Pending',
-      createdAt: new Date().toISOString(),
-      ...orderData
-    }
+  const addOrder = async (orderData) => {
+    const order = await api.post('/orders.php', orderData)
     setOrders((prev) => [order, ...prev])
     return order
   }
 
-  const updateOrderStatus = (id, status) =>
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
+  const updateOrderStatus = async (id, status) => {
+    const updated = await api.put(`/orders.php?id=${id}`, { status })
+    setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)))
+    return updated
+  }
 
   // Merges shipping/tracking info into an order — used both for the manual
   // "type in a tracking ID" path and for the compare-and-book courier flow.
-  const updateOrderShipping = (id, shippingPatch) =>
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === id ? { ...o, shipping: { ...(o.shipping || {}), ...shippingPatch } } : o
-      )
-    )
+  const updateOrderShipping = async (id, shippingPatch) => {
+    const updated = await api.put(`/orders.php?id=${id}`, { shipping: shippingPatch })
+    setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)))
+    return updated
+  }
 
   const value = useMemo(
     () => ({
@@ -108,6 +174,9 @@ export function StoreProvider({ children }) {
       banners: [...banners].sort((a, b) => a.order - b.order),
       settings,
       orders,
+      loading,
+      dbStatus,
+      dbError,
       addProduct,
       updateProduct,
       deleteProduct,
@@ -123,7 +192,7 @@ export function StoreProvider({ children }) {
       updateOrderStatus,
       updateOrderShipping
     }),
-    [products, categories, banners, settings, orders]
+    [products, categories, banners, settings, orders, loading, dbStatus, dbError]
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

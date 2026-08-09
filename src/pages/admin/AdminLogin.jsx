@@ -10,15 +10,25 @@ export default function AdminLogin() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   if (isAdmin) return <Navigate to="/admin" replace />
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (adminLogin(username, password)) {
-      navigate('/admin')
-    } else {
-      setError('Incorrect username or password.')
+    setError('')
+    setLoading(true)
+    try {
+      const success = await adminLogin(username, password)
+      if (success) {
+        navigate('/admin')
+      } else {
+        setError('Incorrect username or password.')
+      }
+    } catch (err) {
+      setError(err.message || 'Could not reach the server. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -42,7 +52,9 @@ export default function AdminLogin() {
             onChange={(e) => setPassword(e.target.value)}
           />
           {error && <p className="text-red-400 text-sm">{error}</p>}
-          <Button type="submit" variant="primary" className="w-full">Sign In</Button>
+          <Button type="submit" variant="primary" className="w-full" disabled={loading}>
+            {loading ? 'Signing In…' : 'Sign In'}
+          </Button>
           <p className="text-xs text-slate">
             Demo credentials: <span className="text-paper">admin / admin123</span>
           </p>

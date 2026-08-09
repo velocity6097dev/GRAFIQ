@@ -12,6 +12,8 @@ export default function ManageCategories() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
 
   const inputClass =
     'w-full bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2 text-sm'
@@ -19,20 +21,30 @@ export default function ManageCategories() {
   const openAdd = () => {
     setEditingId(null)
     setForm(emptyForm)
+    setFormError('')
     setModalOpen(true)
   }
 
   const openEdit = (c) => {
     setEditingId(c.id)
     setForm({ name: c.name, image: c.image, description: c.description || '' })
+    setFormError('')
     setModalOpen(true)
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (editingId) updateCategory(editingId, form)
-    else addCategory(form)
-    setModalOpen(false)
+    setSaving(true)
+    setFormError('')
+    try {
+      if (editingId) await updateCategory(editingId, form)
+      else await addCategory(form)
+      setModalOpen(false)
+    } catch (err) {
+      setFormError(err.message || 'Could not save the category.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const productCount = (catId) => products.filter((p) => p.categoryId === catId).length
@@ -100,9 +112,12 @@ export default function ManageCategories() {
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
+          {formError && <p className="text-red-400 text-xs">{formError}</p>}
           <div className="flex justify-end gap-3 mt-2">
             <Button type="button" variant="dark" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">{editingId ? 'Save Changes' : 'Add Category'}</Button>
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Category'}
+            </Button>
           </div>
         </form>
       </Modal>
@@ -115,9 +130,14 @@ export default function ManageCategories() {
           <Button variant="dark" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
           <Button
             variant="primary"
-            onClick={() => {
-              deleteCategory(confirmDeleteId)
-              setConfirmDeleteId(null)
+            onClick={async () => {
+              try {
+                await deleteCategory(confirmDeleteId)
+              } catch (err) {
+                setFormError(err.message || 'Could not delete the category.')
+              } finally {
+                setConfirmDeleteId(null)
+              }
             }}
           >
             Delete

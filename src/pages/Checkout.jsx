@@ -52,6 +52,8 @@ export default function Checkout() {
   }
 
   // NOTE: This simulates a successful payment after a short delay.
+  const [orderError, setOrderError] = useState('')
+
   // TODO(production): replace with a real gateway call, e.g. Razorpay's
   // checkout.js or Stripe's Payment Element, and only create the order
   // after the gateway confirms payment via a server-side webhook.
@@ -62,21 +64,29 @@ export default function Checkout() {
       return
     }
     setErrors({})
+    setOrderError('')
     setPlacing(true)
-    setTimeout(() => {
-      const order = addOrder({
-        items,
-        address,
-        paymentMethod: payment,
-        subtotal,
-        discountTotal,
-        deliveryFee,
-        total,
-        customerPhone: user?.phone
-      })
-      clearCart()
-      setPlacing(false)
-      navigate(`/order-success/${order.id}`)
+    // Small artificial delay so "Placing Order…" reads as a real payment
+    // step, then the order is actually written to MySQL via addOrder.
+    setTimeout(async () => {
+      try {
+        const order = await addOrder({
+          items,
+          address,
+          paymentMethod: payment,
+          subtotal,
+          discountTotal,
+          deliveryFee,
+          total,
+          customerPhone: user?.phone
+        })
+        clearCart()
+        navigate(`/order-success/${order.id}`)
+      } catch (err) {
+        setOrderError(err.message || 'Could not place the order. Please try again.')
+      } finally {
+        setPlacing(false)
+      }
     }, 1200)
   }
 
@@ -147,6 +157,9 @@ export default function Checkout() {
               <p className="text-red-400 text-xs mt-2 text-center">
                 Please fix the highlighted fields above.
               </p>
+            )}
+            {orderError && (
+              <p className="text-red-400 text-xs mt-2 text-center">{orderError}</p>
             )}
           </div>
         </div>

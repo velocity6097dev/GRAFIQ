@@ -24,6 +24,8 @@ export default function ManageBanners() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
 
   const inputClass =
     'w-full bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2 text-sm'
@@ -31,6 +33,7 @@ export default function ManageBanners() {
   const openAdd = () => {
     setEditingId(null)
     setForm(emptyForm)
+    setFormError('')
     setModalOpen(true)
   }
 
@@ -49,10 +52,11 @@ export default function ManageBanners() {
       ctaSecondaryLabel: b.ctaSecondary?.label || '',
       ctaSecondaryLink: b.ctaSecondary?.link || ''
     })
+    setFormError('')
     setModalOpen(true)
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     const payload = {
       eyebrow: form.eyebrow,
@@ -65,9 +69,17 @@ export default function ManageBanners() {
       ctaPrimary: form.ctaPrimaryLabel ? { label: form.ctaPrimaryLabel, link: form.ctaPrimaryLink } : null,
       ctaSecondary: form.ctaSecondaryLabel ? { label: form.ctaSecondaryLabel, link: form.ctaSecondaryLink } : null
     }
-    if (editingId) updateBanner(editingId, payload)
-    else addBanner(payload)
-    setModalOpen(false)
+    setSaving(true)
+    setFormError('')
+    try {
+      if (editingId) await updateBanner(editingId, payload)
+      else await addBanner(payload)
+      setModalOpen(false)
+    } catch (err) {
+      setFormError(err.message || 'Could not save the banner.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -82,6 +94,10 @@ export default function ManageBanners() {
         </Button>
       </div>
 
+      {formError && !modalOpen && (
+        <p className="text-red-400 text-xs mb-4">{formError}</p>
+      )}
+
       <div className="flex flex-col gap-3">
         {banners.map((b, i) => (
           <div key={b.id} className="border border-line flex items-center gap-4 p-3">
@@ -94,7 +110,7 @@ export default function ManageBanners() {
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
-                onClick={() => reorderBanner(b.id, 'up')}
+                onClick={() => reorderBanner(b.id, 'up').catch((err) => setFormError(err.message))}
                 disabled={i === 0}
                 className="p-1.5 disabled:opacity-30 hover:text-volt"
                 aria-label="Move up"
@@ -102,7 +118,7 @@ export default function ManageBanners() {
                 <ArrowUp size={15} />
               </button>
               <button
-                onClick={() => reorderBanner(b.id, 'down')}
+                onClick={() => reorderBanner(b.id, 'down').catch((err) => setFormError(err.message))}
                 disabled={i === banners.length - 1}
                 className="p-1.5 disabled:opacity-30 hover:text-volt"
                 aria-label="Move down"
@@ -110,7 +126,7 @@ export default function ManageBanners() {
                 <ArrowDown size={15} />
               </button>
               <button
-                onClick={() => updateBanner(b.id, { active: !b.active })}
+                onClick={() => updateBanner(b.id, { active: !b.active }).catch((err) => setFormError(err.message))}
                 className="p-1.5 hover:text-volt"
                 aria-label={b.active ? 'Hide banner' : 'Show banner'}
               >
@@ -160,9 +176,12 @@ export default function ManageBanners() {
             value={form.ctaSecondaryLabel} onChange={(e) => setForm({ ...form, ctaSecondaryLabel: e.target.value })} />
           <input className={inputClass} placeholder="Secondary link URL (optional)"
             value={form.ctaSecondaryLink} onChange={(e) => setForm({ ...form, ctaSecondaryLink: e.target.value })} />
+          {formError && <p className="sm:col-span-2 text-red-400 text-xs">{formError}</p>}
           <div className="sm:col-span-2 flex justify-end gap-3 mt-2">
             <Button type="button" variant="dark" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">{editingId ? 'Save Changes' : 'Add Banner'}</Button>
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Banner'}
+            </Button>
           </div>
         </form>
       </Modal>
@@ -173,9 +192,14 @@ export default function ManageBanners() {
           <Button variant="dark" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
           <Button
             variant="primary"
-            onClick={() => {
-              deleteBanner(confirmDeleteId)
-              setConfirmDeleteId(null)
+            onClick={async () => {
+              try {
+                await deleteBanner(confirmDeleteId)
+              } catch (err) {
+                setFormError(err.message || 'Could not delete the banner.')
+              } finally {
+                setConfirmDeleteId(null)
+              }
             }}
           >
             Delete

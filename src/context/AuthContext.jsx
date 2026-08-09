@@ -1,56 +1,61 @@
 import { createContext, useContext, useState } from 'react'
 import useLocalStorage from '../hooks/useLocalStorage'
+import { api } from '../api/client'
 
 const AuthContext = createContext(null)
 
-// Demo OTP — every phone number receives this same code in dev mode so the
-// flow can be tested without a real SMS gateway.
-// TODO(production): replace sendOtp/verifyOtp with calls to your backend,
-// which should talk to Firebase Phone Auth, MSG91, Twilio Verify, etc.
-const DEMO_OTP = '1234'
-
+// The OTP itself is still a demo code (see grafiq-api/customer_auth.php —
+// that's the one place to swap in a real SMS gateway later). What's
+// different from before is that verified customers are now persisted as
+// rows in the `customers` MySQL table instead of only existing in
+// localStorage. The logged-in session (which customer/admin is "active on
+// this browser") is still cached in localStorage, same as before — that
+// part doesn't need a database, it's just this browser's state.
 export function AuthProvider({ children }) {
   const [user, setUser] = useLocalStorage('grafiq_user', null)
   const [isAdmin, setIsAdmin] = useLocalStorage('grafiq_is_admin', false)
   const [pendingPhone, setPendingPhone] = useState(null)
   const [otpSentAt, setOtpSentAt] = useState(null)
 
-  const sendOtp = (phone) =>
-    new Promise((resolve) => {
+  const sendOtp = async (phone) => {
+    const res = await api.post('/customer_auth.php', { action: 'send_otp', phone })
+    if (res.success) {
       setPendingPhone(phone)
       setOtpSentAt(Date.now())
-      // Simulated network delay
-      setTimeout(() => resolve({ success: true, demoOtp: DEMO_OTP }), 600)
-    })
+    }
+    return res
+  }
 
-  const verifyOtp = (code) =>
-    new Promise((resolve) => {
-      setTimeout(() => {
-        if (code === DEMO_OTP && pendingPhone) {
-          const newUser = { phone: pendingPhone, name: '', loggedInAt: Date.now() }
-          setUser(newUser)
-          setPendingPhone(null)
-          resolve({ success: true })
-        } else {
-          resolve({ success: false, message: 'Incorrect code. Try again.' })
-        }
-      }, 500)
+  const verifyOtp = async (code) => {
+    const res = await api.post('/customer_auth.php', {
+      action: 'verify_otp',
+      phone: pendingPhone,
+      code
     })
+    if (res.success) {
+      setUser(res.user)
+      setPendingPhone(null)
+    }
+    return res
+  }
 
-  const updateProfile = (patch) => setUser((prev) => (prev ? { ...prev, ...patch } : prev))
+  const updateProfile = async (patch) => {
+    if (!user) return
+    const res = await api.post('/customer_auth.php', {
+      action: 'update_profile',
+      phone: user.phone,
+      ...patch
+    })
+    if (res.success) setUser(res.user)
+    return res
+  }
 
   const logout = () => setUser(null)
 
-  // Simple hardcoded admin gate for the demo. Swap for real auth in production.
-  const ADMIN_USERNAME = 'admin'
-  const ADMIN_PASSWORD = 'admin123'
-
-  const adminLogin = (username, password) => {
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      setIsAdmin(true)
-      return true
-    }
-    return false
+  const adminLogin = async (username, password) => {
+    const res = await api.post('/admin_auth.php', { username, password })
+    if (res.success) setIsAdmin(true)
+    return res.success
   }
 
   const adminLogout = () => setIsAdmin(false)

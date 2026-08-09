@@ -25,12 +25,15 @@ export default function ManageProducts() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
 
   const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
 
   const openAdd = () => {
     setEditingId(null)
     setForm(emptyForm)
+    setFormError('')
     setModalOpen(true)
   }
 
@@ -48,6 +51,7 @@ export default function ManageProducts() {
       tags: p.tags || [],
       description: p.description || ''
     })
+    setFormError('')
     setModalOpen(true)
   }
 
@@ -57,7 +61,7 @@ export default function ManageProducts() {
       tags: f.tags.includes(tag) ? f.tags.filter((t) => t !== tag) : [...f.tags, tag]
     }))
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     const payload = {
       name: form.name,
@@ -73,9 +77,17 @@ export default function ManageProducts() {
       rating: 4.5,
       reviews: 0
     }
-    if (editingId) updateProduct(editingId, payload)
-    else addProduct(payload)
-    setModalOpen(false)
+    setSaving(true)
+    setFormError('')
+    try {
+      if (editingId) await updateProduct(editingId, payload)
+      else await addProduct(payload)
+      setModalOpen(false)
+    } catch (err) {
+      setFormError(err.message || 'Could not save the product.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const inputClass =
@@ -236,9 +248,12 @@ export default function ManageProducts() {
               </label>
             ))}
           </div>
+          {formError && <p className="sm:col-span-2 text-red-400 text-xs">{formError}</p>}
           <div className="sm:col-span-2 flex justify-end gap-3 mt-2">
             <Button type="button" variant="dark" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">{editingId ? 'Save Changes' : 'Add Product'}</Button>
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Product'}
+            </Button>
           </div>
         </form>
       </Modal>
@@ -255,9 +270,14 @@ export default function ManageProducts() {
           <Button variant="dark" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
           <Button
             variant="primary"
-            onClick={() => {
-              deleteProduct(confirmDeleteId)
-              setConfirmDeleteId(null)
+            onClick={async () => {
+              try {
+                await deleteProduct(confirmDeleteId)
+              } catch (err) {
+                setFormError(err.message || 'Could not delete the product.')
+              } finally {
+                setConfirmDeleteId(null)
+              }
             }}
           >
             Delete
