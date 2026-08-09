@@ -121,9 +121,10 @@ files.
 - A real SMS gateway for OTP (currently a demo code, `1234`, for every
   phone number — that's the only thing to swap inside
   `grafiq-api/customer_auth.php`).
-- A real payment gateway (Razorpay/Stripe) — currently Checkout just
-  simulates a delay before creating the order.
 - Wiring `OrderDetail.jsx`'s courier-compare UI to the
   `shipping_partners` table via the API instead of the static file.
 - An admin "change password" screen instead of editing the DB row by
   hand.
+
+**Online payments (Razorpay) are done** — see
+[`RAZORPAY_SETUP.md`](./RAZORPAY_SETUP.md) to turn it on.

@@ -15,11 +15,25 @@ header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=UTF-8');
 
-// Preflight requests end here.
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+// Preflight requests end here. (CLI has no REQUEST_METHOD — that's fine,
+// this file is also required by razorpay_queue_worker.php when run from
+// a terminal/cron job, not just over HTTP.)
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
+
+// ---------- Razorpay ----------
+// Get your test-mode keys free at https://dashboard.razorpay.com/app/keys
+// (no live/business verification needed to test — test mode works
+// immediately after signup). Paste them here. Never put the key SECRET
+// in any frontend file — it only belongs here, server-side.
+const RAZORPAY_KEY_ID = 'rzp_test_XXXXXXXXXXXXXX';
+const RAZORPAY_KEY_SECRET = 'YOUR_TEST_KEY_SECRET_HERE';
+// Optional: set this up under Settings → Webhooks in the Razorpay
+// dashboard if you deploy publicly (see grafiq-api/razorpay_webhook.php).
+// Not needed for local XAMPP testing — the queue worker covers that case.
+const RAZORPAY_WEBHOOK_SECRET = '';
 
 // ---------- Database connection ----------
 const DB_HOST = 'localhost';
@@ -33,6 +47,13 @@ $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     PDO::ATTR_EMULATE_PREPARES   => false,
+    // Belt-and-braces on top of the DSN's charset=utf8mb4: some XAMPP
+    // bundles (especially older Windows builds) ship a PDO/mysqlnd
+    // driver that doesn't always honour the DSN charset param, which
+    // silently turns ₹ and other multi-byte characters into "?" on
+    // INSERT/UPDATE. Explicitly running SET NAMES on every new
+    // connection closes that gap regardless of driver quirks.
+    PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8mb4'",
 ];
 
 try {
@@ -95,4 +116,44 @@ function send_json($data, int $status = 200): void
 function send_error(string $message, int $status = 400): void
 {
     send_json(['error' => $message], $status);
+}
+
+function razorpay_configured(): bool
+{
+    return RAZORPAY_KEY_ID !== 'rzp_test_XXXXXXXXXXXXXX' && RAZORPAY_KEY_SECRET !== 'YOUR_TEST_KEY_SECRET_HERE';
+}
+
+/**
+ * Calls Razorpay's REST API (https://api.razorpay.com/v1/...) with your
+ * key_id/key_secret as HTTP Basic Auth, exactly as their docs specify.
+ * Returns [httpStatusCode, decodedJsonBody]. Throws RuntimeException if
+ * the request couldn't be made at all (network/DNS/curl failure) —
+ * that's different from Razorpay responding with an error status, which
+ * callers should check via the returned status code instead.
+ */
+function razorpay_request(string $method, string $path, ?array $body = null): array
+{
+    $ch = curl_init('https://api.razorpay.com/v1' . $path);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => $method,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_USERPWD        => RAZORPAY_KEY_ID . ':' . RAZORPAY_KEY_SECRET,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_TIMEOUT        => 15,
+    ]);
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+    }
+
+    $response = curl_exec($ch);
+    if ($response === false) {
+        $error = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException("Could not reach Razorpay: $error");
+    }
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $decoded = json_decode($response, true);
+    return [$status, is_array($decoded) ? $decoded : []];
 }

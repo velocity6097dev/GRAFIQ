@@ -14,6 +14,7 @@ CREATE DATABASE IF NOT EXISTS grafiq_store CHARACTER SET utf8mb4 COLLATE utf8mb4
 USE grafiq_store;
 
 -- ---------- categories ----------
+DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS categories;
@@ -102,12 +103,36 @@ CREATE TABLE orders (
   items           JSON NULL,
   address         JSON NULL,
   payment_method  VARCHAR(30),
+  payment_status  VARCHAR(20) NOT NULL DEFAULT 'unpaid',
   subtotal        DECIMAL(10,2) DEFAULT 0,
   discount_total  DECIMAL(10,2) DEFAULT 0,
   delivery_fee    DECIMAL(10,2) DEFAULT 0,
   total           DECIMAL(10,2) DEFAULT 0,
   shipping        JSON NULL,
   created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- One row per payment attempt. Razorpay payments land here first with
+-- status='pending_verification' the instant the client-side signature
+-- check passes — that's what makes this a queue: razorpay_queue_worker.php
+-- (run via cron, or the admin "Verify Pending Payments" button) works
+-- through every pending_verification row and independently re-confirms
+-- each one directly against Razorpay's API before trusting it fully.
+CREATE TABLE payments (
+  id                   INT AUTO_INCREMENT PRIMARY KEY,
+  order_id             VARCHAR(20) NOT NULL,
+  provider             VARCHAR(30) NOT NULL DEFAULT 'razorpay',
+  razorpay_order_id    VARCHAR(64),
+  razorpay_payment_id  VARCHAR(64),
+  razorpay_signature   VARCHAR(128),
+  amount               DECIMAL(10,2),
+  currency             VARCHAR(10) DEFAULT 'INR',
+  status               VARCHAR(30) NOT NULL DEFAULT 'pending_verification', -- pending_verification | verified | failed
+  attempts             INT NOT NULL DEFAULT 0,
+  error_message        TEXT,
+  created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  verified_at          TIMESTAMP NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE shipping_partners (

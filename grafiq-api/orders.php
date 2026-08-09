@@ -14,6 +14,7 @@ function row_to_order(array $r): array
         'items'         => decode_json_column($r['items']),
         'address'       => decode_json_column($r['address'], new stdClass()),
         'paymentMethod' => $r['payment_method'],
+        'paymentStatus' => $r['payment_status'],
         'subtotal'      => (float) $r['subtotal'],
         'discountTotal' => (float) $r['discount_total'],
         'deliveryFee'   => (float) $r['delivery_fee'],
@@ -51,8 +52,8 @@ switch ($method) {
         }
 
         $pdo->prepare(
-            'INSERT INTO orders (id, customer_phone, status, items, address, payment_method, subtotal, discount_total, delivery_fee, total, shipping)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO orders (id, customer_phone, status, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, shipping)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
         )->execute([
             $newId,
             $data['customerPhone'] ?? null,
@@ -60,6 +61,7 @@ switch ($method) {
             json_encode($data['items']),
             json_encode($data['address'] ?? []),
             $data['paymentMethod'] ?? '',
+            'unpaid', // COD orders are collected on delivery; online payments go through razorpay_verify.php instead of here
             $data['subtotal'] ?? 0,
             $data['discountTotal'] ?? 0,
             $data['deliveryFee'] ?? 0,
@@ -86,6 +88,10 @@ switch ($method) {
         if (array_key_exists('status', $data)) {
             $sets[] = 'status = ?';
             $values[] = $data['status'];
+        }
+        if (array_key_exists('paymentStatus', $data)) {
+            $sets[] = 'payment_status = ?';
+            $values[] = $data['paymentStatus'];
         }
         if (array_key_exists('shipping', $data)) {
             // Merge, not replace — matches the frontend's updateOrderShipping,

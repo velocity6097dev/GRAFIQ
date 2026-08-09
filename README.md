@@ -7,7 +7,8 @@ Built with **React + React Router + Tailwind CSS + Framer Motion**, backed by
 
 > **Setting this up for the first time?** See
 > [`DATABASE_SETUP.md`](./DATABASE_SETUP.md) for the XAMPP/MySQL steps —
-> do that first, then come back here.
+> do that first, then come back here. Want online payments working too?
+> See [`RAZORPAY_SETUP.md`](./RAZORPAY_SETUP.md) after that.
 
 ## Quick start
 

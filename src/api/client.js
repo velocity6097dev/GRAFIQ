@@ -14,6 +14,10 @@ async function request(path, options = {}) {
       ...options
     })
   } catch (err) {
+    // Preserve AbortError as-is (e.g. React StrictMode cleaning up a
+    // superseded request) — callers need to tell "cancelled on purpose"
+    // apart from "couldn't actually reach the server".
+    if (err.name === 'AbortError') throw err
     throw new Error(
       `Could not reach the API at ${API_BASE}. Is XAMPP's Apache + MySQL running, and is grafiq-api in htdocs?`
     )
@@ -36,10 +40,10 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  get: (path) => request(path),
-  post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
-  put: (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) }),
-  del: (path) => request(path, { method: 'DELETE' })
+  get: (path, options = {}) => request(path, options),
+  post: (path, body, options = {}) => request(path, { method: 'POST', body: JSON.stringify(body), ...options }),
+  put: (path, body, options = {}) => request(path, { method: 'PUT', body: JSON.stringify(body), ...options }),
+  del: (path, options = {}) => request(path, { method: 'DELETE', ...options })
 }
 
 export { API_BASE }

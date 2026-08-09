@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, ArrowRight, Truck } from 'lucide-react'
+import { Search, ArrowRight, Truck, RefreshCw } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import { formatPrice } from '../../utils/format'
+import Button from '../../components/ui/Button'
 
 const STATUSES = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']
 
@@ -14,10 +15,33 @@ const statusTone = {
   Cancelled: 'text-red-400'
 }
 
+const paymentTone = {
+  paid: 'text-volt',
+  unpaid: 'text-slate',
+  failed: 'text-red-400'
+}
+
 export default function ManageOrders() {
-  const { orders, settings } = useStore()
+  const { orders, settings, runPaymentQueue } = useStore()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
+  const [queueRunning, setQueueRunning] = useState(false)
+  const [queueResult, setQueueResult] = useState(null)
+
+  const pendingCount = orders.filter((o) => o.paymentMethod === 'Razorpay' && o.paymentStatus === 'unpaid').length
+
+  const handleRunQueue = async () => {
+    setQueueRunning(true)
+    setQueueResult(null)
+    try {
+      const result = await runPaymentQueue()
+      setQueueResult(result)
+    } catch (err) {
+      setQueueResult({ error: err.message })
+    } finally {
+      setQueueRunning(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     let list = filter === 'all' ? orders : orders.filter((o) => o.status === filter)
@@ -40,6 +64,24 @@ export default function ManageOrders() {
         <div>
           <h1 className="font-display text-3xl uppercase">Orders</h1>
           <p className="text-slate text-sm mt-1">{orders.length} total orders</p>
+        </div>
+        <div className="text-right">
+          <Button variant="dark" onClick={handleRunQueue} disabled={queueRunning}>
+            <span className="inline-flex items-center gap-2">
+              <RefreshCw size={14} className={queueRunning ? 'animate-spin' : ''} />
+              {queueRunning ? 'Verifying…' : 'Verify Pending Payments'}
+            </span>
+          </Button>
+          {pendingCount > 0 && !queueResult && (
+            <p className="text-xs text-slate mt-2">{pendingCount} Razorpay order(s) awaiting confirmation.</p>
+          )}
+          {queueResult && !queueResult.error && (
+            <p className="text-xs text-slate mt-2">
+              Checked {queueResult.processed}, verified {queueResult.verified}, failed {queueResult.failed}
+              {queueResult.retried > 0 && `, retrying ${queueResult.retried}`}.
+            </p>
+          )}
+          {queueResult?.error && <p className="text-xs text-red-400 mt-2">{queueResult.error}</p>}
         </div>
       </div>
 
@@ -69,7 +111,7 @@ export default function ManageOrders() {
         <p className="text-slate text-sm">No orders match this search/filter.</p>
       ) : (
         <div className="border border-line overflow-x-auto">
-          <table className="w-full text-sm min-w-[820px]">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="border-b border-line text-left text-slate font-accent uppercase text-xs">
                 <th className="p-3">Order ID</th>
@@ -77,6 +119,7 @@ export default function ManageOrders() {
                 <th className="p-3">Date</th>
                 <th className="p-3">Items</th>
                 <th className="p-3">Total</th>
+                <th className="p-3">Payment</th>
                 <th className="p-3">Status</th>
                 <th className="p-3">Tracking</th>
                 <th className="p-3 text-right">Actions</th>
@@ -95,6 +138,12 @@ export default function ManageOrders() {
                   </td>
                   <td className="p-3">{o.items?.length || 0}</td>
                   <td className="p-3">{formatPrice(o.total, settings.currencySymbol)}</td>
+                  <td className="p-3">
+                    <p className="text-xs">{o.paymentMethod}</p>
+                    <p className={`text-xs font-accent uppercase ${paymentTone[o.paymentStatus] || 'text-slate'}`}>
+                      {o.paymentStatus}
+                    </p>
+                  </td>
                   <td className={`p-3 font-accent uppercase text-xs ${statusTone[o.status] || 'text-slate'}`}>
                     {o.status}
                   </td>

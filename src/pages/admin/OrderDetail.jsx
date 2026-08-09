@@ -17,6 +17,12 @@ const statusTone = {
   Cancelled: 'text-red-400'
 }
 
+const paymentStatusTone = {
+  paid: 'text-volt',
+  unpaid: 'text-slate',
+  failed: 'text-red-400'
+}
+
 export default function OrderDetail() {
   const { id } = useParams()
   const { orders, settings, updateOrderStatus, updateOrderShipping } = useStore()
@@ -167,6 +173,9 @@ export default function OrderDetail() {
           <section className="border border-line p-5">
             <p className="font-accent uppercase tracking-wide text-volt mb-2">Payment</p>
             <p className="text-sm text-slate uppercase">{order.paymentMethod}</p>
+            <p className={`text-sm font-accent uppercase mt-1 ${paymentStatusTone[order.paymentStatus] || 'text-slate'}`}>
+              {order.paymentStatus}
+            </p>
           </section>
         </div>
 

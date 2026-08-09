@@ -1,12 +1,8 @@
 const options = [
-  { id: 'upi', label: 'UPI', desc: 'Pay via Google Pay, PhonePe, Paytm & more' },
-  { id: 'card', label: 'Credit / Debit Card', desc: 'Visa, Mastercard, RuPay' },
+  { id: 'razorpay', label: 'Pay Online', desc: 'UPI, Cards, Netbanking & Wallets — via Razorpay' },
   { id: 'cod', label: 'Cash on Delivery', desc: 'Pay when your order arrives' }
 ]
 
-// NOTE: This UI only captures the chosen method. Wire `onSelect` up to a real
-// gateway (Razorpay / Stripe / Cashfree) on the backend before going live —
-// see the TODO in pages/Checkout.jsx.
 export default function PaymentOptions({ selected, onSelect }) {
   return (
     <div className="flex flex-col gap-3">

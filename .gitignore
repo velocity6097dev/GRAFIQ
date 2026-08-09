@@ -4,3 +4,5 @@ dist
 *.log
 .env
 ideas.md
+*.zip
+circle loader.html

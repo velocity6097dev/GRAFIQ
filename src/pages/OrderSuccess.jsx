@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { CheckCircle2 } from 'lucide-react'
@@ -5,10 +6,26 @@ import { useStore } from '../context/StoreContext'
 import { formatPrice } from '../utils/format'
 import Button from '../components/ui/Button'
 
+const paymentStatusLabel = {
+  paid: { text: 'Paid', className: 'text-volt' },
+  unpaid: { text: 'Pay on Delivery', className: 'text-slate' },
+  failed: { text: 'Verification Failed — contact support', className: 'text-red-400' }
+}
+
 export default function OrderSuccess() {
   const { orderId } = useParams()
-  const { orders, settings } = useStore()
+  const { orders, settings, runPaymentQueue } = useStore()
   const order = orders.find((o) => o.id === orderId)
+
+  // For local/demo use without a real cron job running, nudge the
+  // verification queue once after landing here so a Razorpay payment's
+  // background re-check happens right away instead of waiting for the
+  // next scheduled run. Harmless no-op for COD orders (nothing queued).
+  useEffect(() => {
+    runPaymentQueue().catch(() => {})
+  }, [])
+
+  const paymentStatus = order && paymentStatusLabel[order.paymentStatus]
 
   return (
     <div className="max-w-xl mx-auto px-4 py-24 text-center">
@@ -32,8 +49,14 @@ export default function OrderSuccess() {
               <span className="text-slate">Payment Method</span>
               <span className="uppercase">{order.paymentMethod}</span>
             </div>
+            {paymentStatus && (
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-slate">Payment Status</span>
+                <span className={`uppercase ${paymentStatus.className}`}>{paymentStatus.text}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
-              <span className="text-slate">Amount Paid</span>
+              <span className="text-slate">Amount</span>
               <span>{formatPrice(order.total, settings.currencySymbol)}</span>
             </div>
           </div>

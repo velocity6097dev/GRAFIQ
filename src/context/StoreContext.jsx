@@ -27,38 +27,56 @@ export function StoreProvider({ children }) {
   const [dbError, setDbError] = useState('')
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
+
+    // React 18 StrictMode runs this effect twice in development (mount →
+    // cleanup → mount again) purely to help catch bugs — without an
+    // AbortController, the first mount's 5 requests keep running in the
+    // background even after being "cancelled" locally, doubling up load
+    // on Apache/MySQL right at startup. Actually aborting them, plus a
+    // couple of quick retries for the normal cold-start hiccup (first
+    // request after XAMPP just started), is what fixes the "shows
+    // disconnected until I refresh" symptom instead of just hiding it.
+    async function loadOnce() {
+      const [productsRes, categoriesRes, bannersRes, settingsRes, ordersRes] = await Promise.all([
+        api.get('/products.php', { signal: controller.signal }),
+        api.get('/categories.php', { signal: controller.signal }),
+        api.get('/banners.php', { signal: controller.signal }),
+        api.get('/settings.php', { signal: controller.signal }),
+        api.get('/orders.php', { signal: controller.signal })
+      ])
+      return { productsRes, categoriesRes, bannersRes, settingsRes, ordersRes }
+    }
 
     async function loadAll() {
-      try {
-        const [productsRes, categoriesRes, bannersRes, settingsRes, ordersRes] = await Promise.all([
-          api.get('/products.php'),
-          api.get('/categories.php'),
-          api.get('/banners.php'),
-          api.get('/settings.php'),
-          api.get('/orders.php')
-        ])
-        if (cancelled) return
-        setProducts(productsRes)
-        setCategories(categoriesRes)
-        setBanners(bannersRes)
-        setSettings(settingsRes)
-        setOrders(ordersRes)
-        setDbStatus('connected')
-      } catch (err) {
-        if (cancelled) return
-        console.warn('Falling back to demo data — could not load from the database:', err)
-        setDbStatus('error')
-        setDbError(err.message)
-      } finally {
-        if (!cancelled) setLoading(false)
+      const MAX_ATTEMPTS = 3
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const { productsRes, categoriesRes, bannersRes, settingsRes, ordersRes } = await loadOnce()
+          setProducts(productsRes)
+          setCategories(categoriesRes)
+          setBanners(bannersRes)
+          setSettings(settingsRes)
+          setOrders(ordersRes)
+          setDbStatus('connected')
+          setLoading(false)
+          return
+        } catch (err) {
+          if (err.name === 'AbortError') return // this effect instance was cleaned up — a newer one is loading
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+            continue
+          }
+          console.warn('Falling back to demo data — could not load from the database:', err)
+          setDbStatus('error')
+          setDbError(err.message)
+          setLoading(false)
+        }
       }
     }
 
     loadAll()
-    return () => {
-      cancelled = true
-    }
+    return () => controller.abort()
   }, [])
 
   // ---------- Products ----------
@@ -153,6 +171,21 @@ export function StoreProvider({ children }) {
     return order
   }
 
+  // Razorpay path goes through a different endpoint (signature + amount
+  // verification happen server-side before the order is even created —
+  // see grafiq-api/razorpay_verify.php) but still needs to land in the
+  // same local `orders` state as a normal addOrder would.
+  const verifyRazorpayPayment = async (payload) => {
+    const order = await api.post('/razorpay_verify.php', payload)
+    setOrders((prev) => [order, ...prev])
+    return order
+  }
+
+  // Re-runs the background reconciliation queue on demand (the admin
+  // panel's "Verify Pending Payments" button) — the same check a cron
+  // job would trigger periodically in production.
+  const runPaymentQueue = () => api.post('/razorpay_queue_worker.php', {})
+
   const updateOrderStatus = async (id, status) => {
     const updated = await api.put(`/orders.php?id=${id}`, { status })
     setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)))
@@ -189,6 +222,8 @@ export function StoreProvider({ children }) {
       reorderBanner,
       updateSettings,
       addOrder,
+      verifyRazorpayPayment,
+      runPaymentQueue,
       updateOrderStatus,
       updateOrderShipping
     }),

@@ -4,6 +4,8 @@ import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 import { useStore } from '../context/StoreContext'
 import { formatPrice } from '../utils/format'
+import { loadRazorpayScript } from '../utils/razorpay'
+import { api } from '../api/client'
 import AddressForm from '../components/checkout/AddressForm'
 import PaymentOptions from '../components/checkout/PaymentOptions'
 import OTPModal from '../components/auth/OTPModal'
@@ -31,13 +33,14 @@ export default function Checkout() {
   const navigate = useNavigate()
   const { items, payable, subtotal, discountTotal, clearCart } = useCart()
   const { user } = useAuth()
-  const { settings, addOrder } = useStore()
+  const { settings, addOrder, verifyRazorpayPayment } = useStore()
 
   const [otpOpen, setOtpOpen] = useState(!user)
   const [address, setAddress] = useState(emptyAddress)
   const [errors, setErrors] = useState({})
-  const [payment, setPayment] = useState('upi')
+  const [payment, setPayment] = useState('razorpay')
   const [placing, setPlacing] = useState(false)
+  const [orderError, setOrderError] = useState('')
 
   const deliveryFee = payable >= settings.freeDeliveryAbove || payable === 0 ? 0 : settings.deliveryFee
   const total = payable + deliveryFee
@@ -51,13 +54,84 @@ export default function Checkout() {
     )
   }
 
-  // NOTE: This simulates a successful payment after a short delay.
-  const [orderError, setOrderError] = useState('')
+  const buildOrderData = () => ({
+    items,
+    address,
+    subtotal,
+    discountTotal,
+    deliveryFee,
+    total,
+    customerPhone: user?.phone
+  })
 
-  // TODO(production): replace with a real gateway call, e.g. Razorpay's
-  // checkout.js or Stripe's Payment Element, and only create the order
-  // after the gateway confirms payment via a server-side webhook.
-  const handlePlaceOrder = () => {
+  const finishOrder = async (order) => {
+    clearCart()
+    navigate(`/order-success/${order.id}`)
+  }
+
+  // Cash on Delivery — no gateway involved, order is created straight away.
+  const handleCodOrder = async () => {
+    const order = await addOrder({ ...buildOrderData(), paymentMethod: 'COD' })
+    await finishOrder(order)
+  }
+
+  // Razorpay — the real three-step flow:
+  //   1. Ask our backend to create a Razorpay order (server-side, needs
+  //      the secret key — never do this from the browser).
+  //   2. Open Razorpay's hosted checkout with that order id.
+  //   3. On success, send the payment_id/order_id/signature to our
+  //      backend, which verifies the signature, cross-checks the amount
+  //      against Razorpay's own record, creates our order, and queues it
+  //      for a second independent verification pass in the background.
+  const handleRazorpayOrder = async () => {
+    const { razorpayOrderId, amount, currency, keyId } = await api.post('/razorpay_create_order.php', {
+      amount: total
+    })
+
+    await loadRazorpayScript()
+
+    return new Promise((resolve, reject) => {
+      const rzp = new window.Razorpay({
+        key: keyId,
+        amount,
+        currency,
+        order_id: razorpayOrderId,
+        name: 'GRAFIQ',
+        description: `Order payment — ${items.length} item${items.length > 1 ? 's' : ''}`,
+        prefill: { contact: user?.phone, name: address.name },
+        theme: { color: '#CAD600' },
+        handler: async (response) => {
+          try {
+            const order = await verifyRazorpayPayment({
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              orderData: { ...buildOrderData(), paymentMethod: 'Razorpay' }
+            })
+            await finishOrder(order)
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        },
+        modal: {
+          // User closed the Razorpay popup without paying — not an error,
+          // just stop the "Placing Order…" spinner.
+          ondismiss: () => resolve('dismissed')
+        }
+      })
+      rzp.on('payment.failed', (response) => {
+        reject(new Error(response.error?.description || 'The payment failed. Please try again.'))
+      })
+      rzp.open()
+    })
+  }
+
+  // TODO(production): also point Razorpay's dashboard at
+  // grafiq-api/razorpay_webhook.php once this is deployed publicly, so
+  // payment confirmation doesn't rely solely on the customer's browser
+  // staying open through the redirect back from the gateway.
+  const handlePlaceOrder = async () => {
     const validationErrors = validateAddress(address)
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
@@ -66,28 +140,17 @@ export default function Checkout() {
     setErrors({})
     setOrderError('')
     setPlacing(true)
-    // Small artificial delay so "Placing Order…" reads as a real payment
-    // step, then the order is actually written to MySQL via addOrder.
-    setTimeout(async () => {
-      try {
-        const order = await addOrder({
-          items,
-          address,
-          paymentMethod: payment,
-          subtotal,
-          discountTotal,
-          deliveryFee,
-          total,
-          customerPhone: user?.phone
-        })
-        clearCart()
-        navigate(`/order-success/${order.id}`)
-      } catch (err) {
-        setOrderError(err.message || 'Could not place the order. Please try again.')
-      } finally {
-        setPlacing(false)
+    try {
+      if (payment === 'cod') {
+        await handleCodOrder()
+      } else {
+        const result = await handleRazorpayOrder()
+        if (result === 'dismissed') setPlacing(false)
       }
-    }, 1200)
+    } catch (err) {
+      setOrderError(err.message || 'Could not place the order. Please try again.')
+      setPlacing(false)
+    }
   }
 
   const hasErrors = Object.keys(errors).length > 0
@@ -151,7 +214,9 @@ export default function Checkout() {
               disabled={placing}
               onClick={handlePlaceOrder}
             >
-              {placing ? 'Placing Order…' : `Pay ${formatPrice(total, settings.currencySymbol)}`}
+              {placing
+                ? payment === 'cod' ? 'Placing Order…' : 'Waiting for Payment…'
+                : payment === 'cod' ? 'Place Order' : `Pay ${formatPrice(total, settings.currencySymbol)}`}
             </Button>
             {hasErrors && (
               <p className="text-red-400 text-xs mt-2 text-center">
