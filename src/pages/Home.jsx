@@ -8,7 +8,7 @@ import RecommendedSlider from '../components/home/RecommendedSlider'
 import DesignYourOwnCTA from '../components/home/DesignYourOwnCTA'
 
 export default function Home() {
-  const { products } = useStore()
+  const { products, loading } = useStore()
 
   const newArrivals = useMemo(() => products.filter((p) => p.tags?.includes('new')), [products])
   const bestsellers = useMemo(
@@ -32,15 +32,17 @@ export default function Home() {
         highlight="Arrivals"
         products={newArrivals.length ? newArrivals : products}
         viewAllLink="/shop"
+        loading={loading}
       />
       <DesignYourOwnCTA />
-      {onDiscount.length > 0 && (
+      {(onDiscount.length > 0 || loading) && (
         <ProductGrid
           eyebrow="Limited time"
           title="On"
           highlight="Discount"
           products={onDiscount}
           viewAllLink="/shop?discount=1"
+          loading={loading}
         />
       )}
       <RecommendedSlider
@@ -48,14 +50,16 @@ export default function Home() {
         title="Recommended"
         highlight="For You"
         products={recommended}
+        loading={loading}
       />
-      {bestsellers.length > 0 && (
+      {(bestsellers.length > 0 || loading) && (
         <ProductGrid
           eyebrow="Fan favourites"
           title="Best"
           highlight="Sellers"
           products={bestsellers}
           viewAllLink="/shop"
+          loading={loading}
         />
       )}
     </div>

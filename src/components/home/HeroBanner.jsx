@@ -5,9 +5,10 @@ import { ArrowRight } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import Button from '../ui/Button'
 import LoadingImage from '../ui/LoadingImage'
+import CircleLoader from '../ui/CircleLoader'
 
 export default function HeroBanner() {
-  const { banners } = useStore()
+  const { banners, loading } = useStore()
   const activeBanners = banners.filter((b) => b.active)
   const [index, setIndex] = useState(0)
 
@@ -17,7 +18,23 @@ export default function HeroBanner() {
     return () => clearInterval(t)
   }, [activeBanners.length])
 
-  if (activeBanners.length === 0) return null
+  if (activeBanners.length === 0) {
+    // Still waiting on the initial fetch — show a lightweight spinner in
+    // the hero's normal slot instead of either an empty gap or (as
+    // before) letting stale placeholder banner data flash on screen.
+    // Once `loading` is false, an empty result here means there
+    // genuinely are no active banners, so render nothing.
+    if (loading) {
+      return (
+        <section className="relative overflow-hidden noise">
+          <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-16 min-h-[520px] flex items-center justify-center">
+            <CircleLoader size={64} />
+          </div>
+        </section>
+      )
+    }
+    return null
+  }
   const banner = activeBanners[index]
 
   return (

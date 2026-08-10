@@ -1,24 +1,40 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import defaultProducts from '../data/products'
-import defaultCategories from '../data/categories'
-import defaultBanners from '../data/banners'
-import defaultSettings from '../data/settings'
 
 const StoreContext = createContext(null)
 
-// All store data now lives in MySQL (see /grafiq-api) instead of
-// localStorage. The default*.js imports are only used as an initial
-// "skeleton" so the page has something to render for the instant before
-// the first fetch resolves — everything is replaced with live database
-// data as soon as it arrives, and every write (add/update/delete) goes
-// straight to the API.
+// A structurally-safe placeholder — enough that components destructuring
+// `settings.storeName` etc. before the real fetch resolves don't crash —
+// but deliberately NOT the old seed/demo content that used to live here.
+// That old content (from src/data/*.js) was only ever meant for local
+// development before a database existed; keeping it as the initial state
+// meant real shoppers could briefly see stale placeholder products/
+// banners/categories flash on screen before the live DB data swapped in.
+// Products/categories/banners now start empty instead — see the `loading`
+// flag exposed below for pages that want to show a lightweight spinner
+// during that (normally sub-second, on a local DB) gap rather than an
+// empty section.
+const EMPTY_SETTINGS = {
+  storeName: 'GRAFIQ',
+  tagline: '',
+  tickerText: '',
+  deliveryFee: 0,
+  freeDeliveryAbove: 0,
+  contactEmail: '',
+  contactPhone: '',
+  instagram: '',
+  facebook: '',
+  twitter: '',
+  features: []
+}
+
 export function StoreProvider({ children }) {
-  const [products, setProducts] = useState(defaultProducts)
-  const [categories, setCategories] = useState(defaultCategories)
-  const [banners, setBanners] = useState(defaultBanners)
-  const [settings, setSettings] = useState(defaultSettings)
+  const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
+  const [banners, setBanners] = useState([])
+  const [settings, setSettings] = useState(EMPTY_SETTINGS)
   const [orders, setOrders] = useState([])
+  const [replacements, setReplacements] = useState([])
 
   const [loading, setLoading] = useState(true)
   // 'connected' | 'error' | 'checking' — surfaced so the UI can warn the
@@ -38,26 +54,28 @@ export function StoreProvider({ children }) {
     // request after XAMPP just started), is what fixes the "shows
     // disconnected until I refresh" symptom instead of just hiding it.
     async function loadOnce() {
-      const [productsRes, categoriesRes, bannersRes, settingsRes, ordersRes] = await Promise.all([
+      const [productsRes, categoriesRes, bannersRes, settingsRes, ordersRes, replacementsRes] = await Promise.all([
         api.get('/products.php', { signal: controller.signal }),
         api.get('/categories.php', { signal: controller.signal }),
         api.get('/banners.php', { signal: controller.signal }),
         api.get('/settings.php', { signal: controller.signal }),
-        api.get('/orders.php', { signal: controller.signal })
+        api.get('/orders.php', { signal: controller.signal }),
+        api.get('/replacements.php', { signal: controller.signal })
       ])
-      return { productsRes, categoriesRes, bannersRes, settingsRes, ordersRes }
+      return { productsRes, categoriesRes, bannersRes, settingsRes, ordersRes, replacementsRes }
     }
 
     async function loadAll() {
       const MAX_ATTEMPTS = 3
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
-          const { productsRes, categoriesRes, bannersRes, settingsRes, ordersRes } = await loadOnce()
+          const { productsRes, categoriesRes, bannersRes, settingsRes, ordersRes, replacementsRes } = await loadOnce()
           setProducts(productsRes)
           setCategories(categoriesRes)
           setBanners(bannersRes)
           setSettings(settingsRes)
           setOrders(ordersRes)
+          setReplacements(replacementsRes)
           setDbStatus('connected')
           setLoading(false)
           return
@@ -200,6 +218,40 @@ export function StoreProvider({ children }) {
     return updated
   }
 
+  // Customer-initiated cancellation. The backend independently enforces
+  // ownership + the "only before Shipped" rule (see
+  // grafiq-api/order_cancel.php) — this isn't just a UI nicety, a
+  // rejected request throws here with the server's reason.
+  const cancelOrder = async (orderId, customerPhone, reason) => {
+    const updated = await api.post('/order_cancel.php', { orderId, customerPhone, reason })
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)))
+    return updated
+  }
+
+  // Admin-only: retry/adjust a refund status by hand (e.g. after
+  // manually confirming a refund went through, or retrying one that
+  // initially failed).
+  const updateOrderRefundStatus = async (id, refundStatus) => {
+    const updated = await api.put(`/orders.php?id=${id}`, { refundStatus })
+    setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)))
+    return updated
+  }
+
+  // ---------- Replacements ----------
+  const requestReplacement = async (payload) => {
+    const created = await api.post('/replacements.php', payload)
+    setReplacements((prev) => [created, ...prev])
+    return created
+  }
+
+  // Admin-only: move a replacement through its own status timeline and/or
+  // attach courier + tracking info.
+  const updateReplacement = async (id, patch) => {
+    const updated = await api.put(`/replacements.php?id=${id}`, patch)
+    setReplacements((prev) => prev.map((r) => (r.id === id ? updated : r)))
+    return updated
+  }
+
   const value = useMemo(
     () => ({
       products,
@@ -207,6 +259,7 @@ export function StoreProvider({ children }) {
       banners: [...banners].sort((a, b) => a.order - b.order),
       settings,
       orders,
+      replacements,
       loading,
       dbStatus,
       dbError,
@@ -225,9 +278,13 @@ export function StoreProvider({ children }) {
       verifyRazorpayPayment,
       runPaymentQueue,
       updateOrderStatus,
-      updateOrderShipping
+      updateOrderShipping,
+      cancelOrder,
+      updateOrderRefundStatus,
+      requestReplacement,
+      updateReplacement
     }),
-    [products, categories, banners, settings, orders, loading, dbStatus, dbError]
+    [products, categories, banners, settings, orders, replacements, loading, dbStatus, dbError]
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

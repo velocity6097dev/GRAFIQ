@@ -8,12 +8,13 @@ import { useWishlist } from '../context/WishlistContext'
 import PriceTag from '../components/product/PriceTag'
 import Button from '../components/ui/Button'
 import LoadingImage from '../components/ui/LoadingImage'
+import CircleLoader from '../components/ui/CircleLoader'
 import RecommendedSlider from '../components/home/RecommendedSlider'
 
 export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { products, categories } = useStore()
+  const { products, categories, loading } = useStore()
   const { addToCart } = useCart()
   const { isWishlisted, toggleWishlist } = useWishlist()
 
@@ -34,6 +35,16 @@ export default function ProductDetail() {
   )
 
   if (!product) {
+    // Still waiting on the initial fetch — this specific product may
+    // well exist, we just don't have the data yet. Only claim it's
+    // missing once loading has actually finished.
+    if (loading) {
+      return (
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-24 flex justify-center">
+          <CircleLoader size={64} />
+        </div>
+      )
+    }
     return (
       <div className="max-w-7xl mx-auto px-4 md:px-8 py-24 text-center">
         <p className="font-accent text-2xl mb-4">Product not found</p>

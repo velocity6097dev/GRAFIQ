@@ -5,6 +5,7 @@ import {
   FolderTree,
   GalleryHorizontal,
   ClipboardList,
+  RefreshCw,
   Settings as SettingsIcon,
   LogOut,
   ExternalLink
@@ -19,6 +20,7 @@ const links = [
   { to: '/admin/categories', label: 'Categories', icon: FolderTree },
   { to: '/admin/banners', label: 'Banners', icon: GalleryHorizontal },
   { to: '/admin/orders', label: 'Orders', icon: ClipboardList },
+  { to: '/admin/replacements', label: 'Replacements', icon: RefreshCw },
   { to: '/admin/settings', label: 'Settings', icon: SettingsIcon }
 ]
 
@@ -92,7 +94,7 @@ export default function AdminLayout() {
         <main className="p-4 md:p-8">
           {dbStatus === 'error' && (
             <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-xs sm:text-sm px-4 py-2 mb-6">
-              Not connected to the database — showing demo data only, changes won't save.{' '}
+              Not connected to the database — the store will look empty until it reconnects.{' '}
               {dbError && <span className="opacity-80">({dbError})</span>}
             </div>
           )}

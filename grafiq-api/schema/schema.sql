@@ -14,6 +14,7 @@ CREATE DATABASE IF NOT EXISTS grafiq_store CHARACTER SET utf8mb4 COLLATE utf8mb4
 USE grafiq_store;
 
 -- ---------- categories ----------
+DROP TABLE IF EXISTS replacements;
 DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS products;
@@ -97,19 +98,31 @@ CREATE TABLE customers (
 ) ENGINE=InnoDB;
 
 CREATE TABLE orders (
-  id              VARCHAR(20) PRIMARY KEY,
-  customer_phone  VARCHAR(15),
-  status          VARCHAR(30) NOT NULL DEFAULT 'Pending',
-  items           JSON NULL,
-  address         JSON NULL,
-  payment_method  VARCHAR(30),
-  payment_status  VARCHAR(20) NOT NULL DEFAULT 'unpaid',
-  subtotal        DECIMAL(10,2) DEFAULT 0,
-  discount_total  DECIMAL(10,2) DEFAULT 0,
-  delivery_fee    DECIMAL(10,2) DEFAULT 0,
-  total           DECIMAL(10,2) DEFAULT 0,
-  shipping        JSON NULL,
-  created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id                   VARCHAR(20) PRIMARY KEY,
+  customer_phone       VARCHAR(15),
+  status               VARCHAR(30) NOT NULL DEFAULT 'Pending',
+  -- JSON array of {status, at} entries — one appended every time `status`
+  -- changes (see orders.php). This is what powers the customer-facing
+  -- "Track Order" timeline (Order Placed → Confirmed → Processing →
+  -- Shipped → Out for Delivery → Delivered) with real timestamps rather
+  -- than just guessing dates from the current status alone.
+  status_history       JSON NULL,
+  items                JSON NULL,
+  address              JSON NULL,
+  payment_method       VARCHAR(30),
+  payment_status       VARCHAR(20) NOT NULL DEFAULT 'unpaid',
+  subtotal             DECIMAL(10,2) DEFAULT 0,
+  discount_total       DECIMAL(10,2) DEFAULT 0,
+  delivery_fee         DECIMAL(10,2) DEFAULT 0,
+  total                DECIMAL(10,2) DEFAULT 0,
+  shipping             JSON NULL,
+  cancelled_at         TIMESTAMP NULL,
+  cancellation_reason  VARCHAR(255) NULL,
+  -- Only meaningful when a *paid* order gets cancelled — NULL means "not
+  -- applicable" (never paid, or never cancelled). See order_cancel.php.
+  refund_status        VARCHAR(20) NULL, -- pending | processing | refunded | failed
+  refund_id            VARCHAR(64) NULL,
+  created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 -- One row per payment attempt. Razorpay payments land here first with
@@ -142,6 +155,30 @@ CREATE TABLE shipping_partners (
   base_rate   DECIMAL(10,2),
   per_kg_rate DECIMAL(10,2),
   rating      DECIMAL(2,1)
+) ENGINE=InnoDB;
+
+-- One row per "request a replacement" submission. Independent status
+-- timeline from the parent order (Replacement Requested → Under Review →
+-- Approved → Replacement Processing → Replacement Shipped → Out for
+-- Delivery → Replacement Delivered, or Rejected) so a customer can track
+-- their original order and any replacement side by side without them
+-- getting mixed up.
+CREATE TABLE replacements (
+  id                   VARCHAR(20) PRIMARY KEY,
+  order_id             VARCHAR(20) NOT NULL,
+  product_id           VARCHAR(60),
+  product_name         VARCHAR(200),
+  reason               VARCHAR(120),
+  note                 TEXT,
+  photo_url            TEXT,
+  status               VARCHAR(40) NOT NULL DEFAULT 'Replacement Requested',
+  status_history       JSON NULL,
+  courier_name         VARCHAR(150),
+  tracking_id          VARCHAR(100),
+  estimated_delivery   DATE NULL,
+  created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- =========================================================

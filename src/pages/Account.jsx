@@ -1,25 +1,59 @@
+import { useMemo, useState } from 'react'
 import { Navigate, Link } from 'react-router-dom'
-import { Truck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useStore } from '../context/StoreContext'
-import { formatPrice } from '../utils/format'
 import Button from '../components/ui/Button'
+import Pagination from '../components/ui/Pagination'
+import OrderCard from '../components/account/OrderCard'
+import OrderViewModal from '../components/account/OrderViewModal'
+import TrackOrderModal from '../components/account/TrackOrderModal'
+import CancelOrderModal from '../components/account/CancelOrderModal'
+import RequestReplacementModal from '../components/account/RequestReplacementModal'
 
-const statusTone = {
-  Pending: 'text-slate',
-  Processing: 'text-volt',
-  Shipped: 'text-volt',
-  Delivered: 'text-green-400',
-  Cancelled: 'text-red-400'
-}
+const PAGE_SIZE = 10
 
 export default function Account() {
   const { user, logout } = useAuth()
-  const { orders, settings } = useStore()
+  const { orders, replacements } = useStore()
+  const [page, setPage] = useState(1)
+
+  const [viewOrder, setViewOrder] = useState(null)
+  const [trackOrder, setTrackOrder] = useState(null)
+  const [cancelOrderTarget, setCancelOrderTarget] = useState(null)
+  const [replacementOrder, setReplacementOrder] = useState(null)
+
+  const myOrders = useMemo(
+    () =>
+      user
+        ? orders
+            .filter((o) => o.customerPhone === user.phone)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        : [],
+    [orders, user]
+  )
+
+  // Most recent replacement per order, for the card's quick status line
+  // and so Track Order can show both timelines together.
+  const replacementByOrderId = useMemo(() => {
+    const map = new Map()
+    for (const r of replacements) {
+      const existing = map.get(r.orderId)
+      if (!existing || new Date(r.createdAt) > new Date(existing.createdAt)) {
+        map.set(r.orderId, r)
+      }
+    }
+    return map
+  }, [replacements])
 
   if (!user) return <Navigate to="/login" replace />
 
-  const myOrders = orders.filter((o) => o.customerPhone === user.phone)
+  const totalPages = Math.max(1, Math.ceil(myOrders.length / PAGE_SIZE))
+  const pageOrders = myOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const goToPage = (p) => {
+    setPage(p)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 md:px-8 py-10">
@@ -31,55 +65,56 @@ export default function Account() {
         <Button variant="dark" onClick={logout}>Log Out</Button>
       </div>
 
-      <p className="font-accent uppercase tracking-wide text-volt mb-4">Order History</p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="font-accent uppercase tracking-wide text-volt">Order History</p>
+        {myOrders.length > 0 && (
+          <p className="text-xs text-slate">
+            {myOrders.length} order{myOrders.length !== 1 && 's'}
+          </p>
+        )}
+      </div>
+
       {myOrders.length === 0 ? (
         <div className="border border-line p-10 text-center">
           <p className="text-slate mb-4">You haven't placed any orders yet.</p>
           <Button as={Link} to="/shop" variant="primary">Start Shopping</Button>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          {myOrders.map((order) => (
-            <div key={order.id} className="border border-line p-5">
-              <div className="flex justify-between items-start flex-wrap gap-2">
-                <div>
-                  <p className="font-accent text-volt">{order.id}</p>
-                  <p className="text-xs text-slate mt-1">
-                    {new Date(order.createdAt).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric'
-                    })}
-                  </p>
-                </div>
-                <span className={`font-accent uppercase text-sm ${statusTone[order.status] || 'text-slate'}`}>
-                  {order.status}
-                </span>
-              </div>
-              <div className="mt-3 flex flex-col gap-1">
-                {order.items.map((item) => (
-                  <p key={item.lineId} className="text-sm text-slate">
-                    {item.name} × {item.qty} {item.size && `(${item.size})`}
-                  </p>
-                ))}
-              </div>
-              <div className="flex justify-between mt-3 pt-3 border-t border-line text-sm">
-                <span className="text-slate">Total</span>
-                <span className="font-accent">{formatPrice(order.total, settings.currencySymbol)}</span>
-              </div>
-              {order.shipping?.trackingId && (
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-line text-sm">
-                  <Truck size={15} className="text-volt shrink-0" />
-                  <span className="text-slate">
-                    {order.shipping.courierName ? `${order.shipping.courierName} · ` : ''}
-                    Tracking ID: <span className="text-paper">{order.shipping.trackingId}</span>
-                  </span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-4">
+            {pageOrders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                replacement={replacementByOrderId.get(order.id)}
+                onView={() => setViewOrder(order)}
+                onTrack={() => setTrackOrder(order)}
+                onCancel={() => setCancelOrderTarget(order)}
+                onRequestReplacement={() => setReplacementOrder(order)}
+              />
+            ))}
+          </div>
+          <Pagination page={page} totalPages={totalPages} onChange={goToPage} />
+        </>
       )}
+
+      <OrderViewModal order={viewOrder} open={!!viewOrder} onClose={() => setViewOrder(null)} />
+      <TrackOrderModal
+        order={trackOrder}
+        replacement={trackOrder ? replacementByOrderId.get(trackOrder.id) : null}
+        open={!!trackOrder}
+        onClose={() => setTrackOrder(null)}
+      />
+      <CancelOrderModal
+        order={cancelOrderTarget}
+        open={!!cancelOrderTarget}
+        onClose={() => setCancelOrderTarget(null)}
+      />
+      <RequestReplacementModal
+        order={replacementOrder}
+        open={!!replacementOrder}
+        onClose={() => setReplacementOrder(null)}
+      />
     </div>
   )
 }

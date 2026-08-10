@@ -6,13 +6,16 @@ import { formatPrice, generateTrackingId } from '../../utils/format'
 import { getShippingQuotes } from '../../utils/shipping'
 import shippingPartners from '../../data/shippingPartners'
 import Button from '../../components/ui/Button'
+import CircleLoader from '../../components/ui/CircleLoader'
 
-const STATUSES = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']
+const STATUSES = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled']
 
 const statusTone = {
   Pending: 'text-slate',
+  Confirmed: 'text-volt',
   Processing: 'text-volt',
   Shipped: 'text-volt',
+  'Out for Delivery': 'text-volt',
   Delivered: 'text-green-400',
   Cancelled: 'text-red-400'
 }
@@ -25,8 +28,9 @@ const paymentStatusTone = {
 
 export default function OrderDetail() {
   const { id } = useParams()
-  const { orders, settings, updateOrderStatus, updateOrderShipping } = useStore()
+  const { orders, replacements, settings, loading, updateOrderStatus, updateOrderShipping, updateOrderRefundStatus } = useStore()
   const order = orders.find((o) => o.id === id)
+  const linkedReplacements = replacements.filter((r) => r.orderId === id)
 
   const [trackingInput, setTrackingInput] = useState(order?.shipping?.trackingId || '')
   const [trackingSaved, setTrackingSaved] = useState(false)
@@ -40,6 +44,13 @@ export default function OrderDetail() {
   )
 
   if (!order) {
+    if (loading) {
+      return (
+        <div className="flex justify-center py-24">
+          <CircleLoader size={56} />
+        </div>
+      )
+    }
     return (
       <div>
         <Link to="/admin/orders" className="inline-flex items-center gap-1.5 text-sm text-slate hover:text-volt mb-6">
@@ -78,7 +89,7 @@ export default function OrderDetail() {
           trackingId,
           bookedAt: new Date().toISOString()
         })
-        if (order.status === 'Pending' || order.status === 'Processing') {
+        if (['Pending', 'Confirmed', 'Processing'].includes(order.status)) {
           await updateOrderStatus(order.id, 'Shipped')
         }
         setTrackingInput(trackingId)
@@ -177,6 +188,40 @@ export default function OrderDetail() {
               {order.paymentStatus}
             </p>
           </section>
+
+          {order.status === 'Cancelled' && (
+            <section className="border border-red-500/30 bg-red-500/5 p-5">
+              <p className="font-accent uppercase tracking-wide text-red-400 mb-2">Cancellation</p>
+              {order.cancellationReason && (
+                <p className="text-sm text-slate mb-1">Reason: {order.cancellationReason}</p>
+              )}
+              {order.cancelledAt && (
+                <p className="text-xs text-slate mb-3">
+                  {new Date(order.cancelledAt).toLocaleString('en-IN', {
+                    day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit'
+                  })}
+                </p>
+              )}
+              {order.refundStatus && (
+                <div>
+                  <label className="text-xs font-accent uppercase text-slate mb-1.5 block">Refund Status</label>
+                  <select
+                    value={order.refundStatus}
+                    onChange={(e) =>
+                      updateOrderRefundStatus(order.id, e.target.value).catch((err) => setActionError(err.message))
+                    }
+                    className="bg-panel border border-line px-3 py-2 text-sm outline-none w-full"
+                  >
+                    {['pending', 'processing', 'refunded', 'failed'].map((s) => (
+                      <option key={s} value={s} style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </section>
+          )}
         </div>
 
         {/* Right: tracking + shipping partner comparison */}
@@ -218,6 +263,31 @@ export default function OrderDetail() {
               </div>
             )}
           </section>
+
+          {linkedReplacements.length > 0 && (
+            <section className="border border-line p-5">
+              <p className="font-accent uppercase tracking-wide text-volt mb-4">Replacement Requests</p>
+              <div className="flex flex-col gap-3">
+                {linkedReplacements.map((r) => (
+                  <div key={r.id} className="border border-line p-3 text-sm">
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <p className="text-paper">{r.productName}</p>
+                        <p className="text-xs text-slate mt-0.5">{r.reason}</p>
+                      </div>
+                      <span className="font-accent uppercase text-xs text-volt shrink-0">{r.status}</span>
+                    </div>
+                    <Link
+                      to="/admin/replacements"
+                      className="inline-flex items-center gap-1 text-xs font-accent uppercase tracking-wide text-paper hover:text-volt mt-2"
+                    >
+                      Manage <RefreshCw size={12} />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="border border-line p-5">
             <div className="flex items-center justify-between mb-4">

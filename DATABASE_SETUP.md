@@ -117,6 +117,16 @@ happen. If it does, make sure you're hitting the API through Apache
 (port 80) and not trying to open the `.php` files directly as local
 files.
 
+## Already have a database from before?
+
+If you'd previously set this up and just want the newer features
+(order cancellation, replacement requests, order status timeline), run
+these two files in phpMyAdmin's **Import** tab — in this order — instead
+of re-importing the whole `schema.sql` (which would wipe your data):
+
+1. `grafiq-api/migration_razorpay.sql` (if you haven't already)
+2. `grafiq-api/migration_order_tracking.sql`
+
 ## Next steps (not done yet, happy to build these on request)
 - A real SMS gateway for OTP (currently a demo code, `1234`, for every
   phone number — that's the only thing to swap inside

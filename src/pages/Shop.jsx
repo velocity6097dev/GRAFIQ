@@ -4,6 +4,7 @@ import { SlidersHorizontal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '../context/StoreContext'
 import ProductCard from '../components/product/ProductCard'
+import CircleLoader from '../components/ui/CircleLoader'
 import useScrollLock from '../hooks/useScrollLock'
 
 const SORT_OPTIONS = [
@@ -14,7 +15,7 @@ const SORT_OPTIONS = [
 ]
 
 export default function Shop() {
-  const { products, categories } = useStore()
+  const { products, categories, loading } = useStore()
   const [params, setParams] = useSearchParams()
   const [filtersOpen, setFiltersOpen] = useState(false)
   useScrollLock(filtersOpen)
@@ -110,7 +111,9 @@ export default function Shop() {
           <h1 className="font-display text-3xl md:text-4xl uppercase">
             {query ? `Results for "${query}"` : 'Shop All'}
           </h1>
-          <p className="text-slate text-sm mt-1">{filtered.length} products</p>
+          <p className="text-slate text-sm mt-1">
+            {loading && products.length === 0 ? 'Loading…' : `${filtered.length} products`}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -165,7 +168,15 @@ export default function Shop() {
           )}
         </AnimatePresence>
 
-        {filtered.length === 0 ? (
+        {loading && products.length === 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="aspect-[4/5] bg-panel border border-line flex items-center justify-center">
+                {i === 2 && <CircleLoader size={40} />}
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-24 text-slate">
             <p className="font-accent text-xl text-paper mb-2">No products match these filters</p>
             <p className="text-sm">Try widening the price range or clearing a filter.</p>

@@ -7,20 +7,28 @@ function row_to_order(array $r): array
     if (!empty($r['created_at'])) {
         $createdAt = (new DateTime($r['created_at']))->format(DATE_ATOM);
     }
+    $cancelledAt = null;
+    if (!empty($r['cancelled_at'])) {
+        $cancelledAt = (new DateTime($r['cancelled_at']))->format(DATE_ATOM);
+    }
     return [
-        'id'            => $r['id'],
-        'customerPhone' => $r['customer_phone'],
-        'status'        => $r['status'],
-        'items'         => decode_json_column($r['items']),
-        'address'       => decode_json_column($r['address'], new stdClass()),
-        'paymentMethod' => $r['payment_method'],
-        'paymentStatus' => $r['payment_status'],
-        'subtotal'      => (float) $r['subtotal'],
-        'discountTotal' => (float) $r['discount_total'],
-        'deliveryFee'   => (float) $r['delivery_fee'],
-        'total'         => (float) $r['total'],
-        'shipping'      => decode_json_column($r['shipping'], null),
-        'createdAt'     => $createdAt,
+        'id'                 => $r['id'],
+        'customerPhone'      => $r['customer_phone'],
+        'status'             => $r['status'],
+        'statusHistory'      => decode_json_column($r['status_history']),
+        'items'              => decode_json_column($r['items']),
+        'address'            => decode_json_column($r['address'], new stdClass()),
+        'paymentMethod'      => $r['payment_method'],
+        'paymentStatus'      => $r['payment_status'],
+        'subtotal'           => (float) $r['subtotal'],
+        'discountTotal'      => (float) $r['discount_total'],
+        'deliveryFee'        => (float) $r['delivery_fee'],
+        'total'              => (float) $r['total'],
+        'shipping'           => decode_json_column($r['shipping'], null),
+        'cancelledAt'        => $cancelledAt,
+        'cancellationReason' => $r['cancellation_reason'],
+        'refundStatus'       => $r['refund_status'],
+        'createdAt'          => $createdAt,
     ];
 }
 
@@ -51,13 +59,16 @@ switch ($method) {
             if (!$exists->fetch()) break;
         }
 
+        $initialHistory = [['status' => 'Pending', 'at' => (new DateTime())->format(DATE_ATOM)]];
+
         $pdo->prepare(
-            'INSERT INTO orders (id, customer_phone, status, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, shipping)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO orders (id, customer_phone, status, status_history, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, shipping)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
         )->execute([
             $newId,
             $data['customerPhone'] ?? null,
             'Pending',
+            json_encode($initialHistory),
             json_encode($data['items']),
             json_encode($data['address'] ?? []),
             $data['paymentMethod'] ?? '',
@@ -88,10 +99,18 @@ switch ($method) {
         if (array_key_exists('status', $data)) {
             $sets[] = 'status = ?';
             $values[] = $data['status'];
+
+            $history = decode_json_column($existing['status_history']);
+            $sets[] = 'status_history = ?';
+            $values[] = json_encode(append_status_history($history, $data['status']));
         }
         if (array_key_exists('paymentStatus', $data)) {
             $sets[] = 'payment_status = ?';
             $values[] = $data['paymentStatus'];
+        }
+        if (array_key_exists('refundStatus', $data)) {
+            $sets[] = 'refund_status = ?';
+            $values[] = $data['refundStatus'];
         }
         if (array_key_exists('shipping', $data)) {
             // Merge, not replace — matches the frontend's updateOrderShipping,

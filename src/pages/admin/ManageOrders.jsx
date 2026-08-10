@@ -5,12 +5,14 @@ import { useStore } from '../../context/StoreContext'
 import { formatPrice } from '../../utils/format'
 import Button from '../../components/ui/Button'
 
-const STATUSES = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']
+const STATUSES = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled']
 
 const statusTone = {
   Pending: 'text-slate',
+  Confirmed: 'text-volt',
   Processing: 'text-volt',
   Shipped: 'text-volt',
+  'Out for Delivery': 'text-volt',
   Delivered: 'text-green-400',
   Cancelled: 'text-red-400'
 }

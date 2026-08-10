@@ -118,6 +118,23 @@ function send_error(string $message, int $status = 400): void
     send_json(['error' => $message], $status);
 }
 
+/**
+ * Appends a {status, at} entry to a status_history JSON column's decoded
+ * array, but only if the status actually changed — repeated PUTs with
+ * the same status (e.g. an admin re-saving a form) shouldn't pad the
+ * timeline with duplicate entries. Returns the updated array ready for
+ * json_encode.
+ */
+function append_status_history(array $currentHistory, string $newStatus): array
+{
+    $last = end($currentHistory);
+    if ($last && ($last['status'] ?? null) === $newStatus) {
+        return $currentHistory; // no-op: status didn't actually change
+    }
+    $currentHistory[] = ['status' => $newStatus, 'at' => (new DateTime())->format(DATE_ATOM)];
+    return $currentHistory;
+}
+
 function razorpay_configured(): bool
 {
     return RAZORPAY_KEY_ID !== 'rzp_test_XXXXXXXXXXXXXX' && RAZORPAY_KEY_SECRET !== 'YOUR_TEST_KEY_SECRET_HERE';
