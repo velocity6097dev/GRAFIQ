@@ -36,6 +36,47 @@ event-driven alternative to polling, but it needs a public HTTPS URL
 Razorpay can reach, so it won't do anything on local XAMPP. Ignore it
 until you deploy somewhere public.
 
+## Admin: Verify Payment / Refund on an order
+
+Every order's page in the admin panel (Orders → an order) has a
+**Payment** section. If that order has a Razorpay payment linked to it,
+you'll see:
+- **Verify Payment** — re-checks that specific payment against
+  Razorpay's API right now, independent of the background queue worker
+  above. Useful if you don't want to wait for the next queue run.
+- **Refund** — issues a refund via Razorpay. It defaults to the full
+  amount that was actually paid, but you can lower it (e.g. to deduct
+  shipping charges before refunding the rest, per your terms).
+
+Both are backed by `grafiq-api/payment_action.php`, and both need your
+real Razorpay keys configured (step 2 above) to do anything.
+
+## Partial COD (non-refundable advance on Cash on Delivery)
+
+Under **Admin → Settings → Cash on Delivery**, you can set a **COD
+Advance %**. When it's above 0:
+- A customer choosing Cash on Delivery at checkout is charged that % of
+  the order total right now, through Razorpay (same hosted checkout as
+  a normal online payment) — the rest stays payable in cash when the
+  order arrives.
+- That advance is **non-refundable** by design, so cancelling the order
+  does **not** auto-refund it (unlike a fully-paid Razorpay order, which
+  does auto-refund on cancellation). If you want to refund some or all
+  of it anyway — say, minus shipping charges you already spent — do
+  that manually from the order's Payment section (**Refund**, above),
+  where you can enter any amount up to what was paid.
+- The order's Payment Status shows as `partial` (not `paid`) the whole
+  way through, since only the advance went through Razorpay — the
+  balance is still cash-on-delivery.
+
+Leave it at **0** (the default) and COD works exactly as it always has:
+no upfront charge, the full amount collected in cash on delivery.
+
+If you're formalizing this in your Terms & Conditions, the two things
+worth stating explicitly are: (1) the advance is non-refundable, and
+(2) any refund of it (e.g. after deducting shipping) is handled
+case-by-case, not automatically.
+
 ## Setup
 
 ### 1. Get test-mode API keys (free, no verification needed)
@@ -63,10 +104,15 @@ anywhere else).
 
 ### 3. If you already imported the old schema
 
-Run `grafiq-api/migration_razorpay.sql` in phpMyAdmin (Import tab) —
-it adds the `payments` table and `orders.payment_status` column without
-touching your existing products/orders/etc. Setting up fresh? Just
-import `schema.sql`, it already includes this.
+Run `grafiq-api/schema/migration/migration_razorpay.sql` in phpMyAdmin
+(Import tab) — it adds the `payments` table and `orders.payment_status`
+column without touching your existing products/orders/etc. Setting up
+fresh? Just import `schema.sql`, it already includes this.
+
+Want the partial-COD feature and the expanded admin order page too? Also
+run `grafiq-api/schema/migration/migration_admin_order_page.sql` — see
+[`DATABASE_SETUP.md`](./DATABASE_SETUP.md#already-have-a-database-from-before)
+for the full migration order.
 
 ### 4. Test it
 

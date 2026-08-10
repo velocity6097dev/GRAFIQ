@@ -35,7 +35,8 @@ export default function Settings() {
       await updateSettings({
         ...form,
         deliveryFee: Number(form.deliveryFee),
-        freeDeliveryAbove: Number(form.freeDeliveryAbove)
+        freeDeliveryAbove: Number(form.freeDeliveryAbove),
+        codAdvancePercent: Number(form.codAdvancePercent) || 0
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -89,6 +90,31 @@ export default function Settings() {
               <input type="number" className={`${inputClass} mt-1.5`} value={form.freeDeliveryAbove} onChange={set('freeDeliveryAbove')} />
             </div>
           </div>
+        </section>
+
+        <section>
+          <p className="font-accent uppercase tracking-wide text-volt mb-4">Cash on Delivery</p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-slate uppercase font-accent">COD Advance (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                className={`${inputClass} mt-1.5`}
+                value={form.codAdvancePercent ?? 0}
+                onChange={set('codAdvancePercent')}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-slate mt-2 leading-relaxed">
+            If set above 0, a customer choosing Cash on Delivery must pay this % of the order total online
+            (via Razorpay) before it ships — the rest stays payable in cash on delivery. This advance is
+            non-refundable if the order is cancelled; any refund of it (e.g. minus shipping charges) is done
+            manually from the order's Payment section. Leave at 0 for COD to work as before, fully paid on
+            delivery.
+          </p>
         </section>
 
         <section>

@@ -25,7 +25,13 @@ function process_queue(PDO $pdo): array
 {
     $results = ['processed' => 0, 'verified' => 0, 'failed' => 0, 'retried' => 0, 'details' => []];
 
-    $stmt = $pdo->query("SELECT * FROM payments WHERE status = 'pending_verification' ORDER BY created_at ASC LIMIT 50");
+    $stmt = $pdo->query(
+        "SELECT p.*, o.payment_method AS order_payment_method
+         FROM payments p
+         JOIN orders o ON o.id = p.order_id
+         WHERE p.status = 'pending_verification'
+         ORDER BY p.created_at ASC LIMIT 50"
+    );
     $rows = $stmt->fetchAll();
 
     foreach ($rows as $row) {
@@ -59,7 +65,11 @@ function process_queue(PDO $pdo): array
         if ($capturedOk && $amountOk && $orderOk) {
             $pdo->prepare("UPDATE payments SET status = 'verified', verified_at = NOW(), attempts = attempts + 1 WHERE id = ?")
                 ->execute([$row['id']]);
-            $pdo->prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?")->execute([$row['order_id']]);
+            // A COD order (see the partial-COD feature) only ever has this
+            // payment as its upfront advance — the rest is due in cash on
+            // delivery — so it stays 'partial', never jumps to 'paid'.
+            $orderPaymentStatus = $row['order_payment_method'] === 'COD' ? 'partial' : 'paid';
+            $pdo->prepare('UPDATE orders SET payment_status = ? WHERE id = ?')->execute([$orderPaymentStatus, $row['order_id']]);
             $results['verified']++;
             $results['details'][] = "Verified {$row['order_id']}.";
         } else {

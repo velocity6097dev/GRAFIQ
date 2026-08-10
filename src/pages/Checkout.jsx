@@ -12,7 +12,7 @@ import OTPModal from '../components/auth/OTPModal'
 import Button from '../components/ui/Button'
 import CircleLoader from '../components/ui/CircleLoader'
 
-const emptyAddress = { name: '', phone: '', pincode: '', line1: '', city: '', state: '' }
+const emptyAddress = { name: '', phone: '', email: '', pincode: '', line1: '', city: '', state: '' }
 
 // The address fields live in a page layout, not a submittable <form>, so
 // HTML's `required` attribute never actually fires (that only triggers on
@@ -46,6 +46,21 @@ export default function Checkout() {
   const deliveryFee = payable >= settings.freeDeliveryAbove || payable === 0 ? 0 : settings.deliveryFee
   const total = payable + deliveryFee
 
+  // Partial-COD: when the store has set a % under Admin → Settings,
+  // a Cash-on-Delivery order needs a non-refundable advance paid online
+  // before it ships — the rest stays payable in cash on delivery as
+  // usual. 0% (the default) means COD behaves exactly as it always has.
+  const codAdvancePercent = Number(settings.codAdvancePercent) || 0
+  const codAdvanceAmount = codAdvancePercent > 0 ? Math.round((total * codAdvancePercent) / 100) : 0
+  const codRemainingAmount = total - codAdvanceAmount
+  const codNote =
+    codAdvanceAmount > 0
+      ? `Pay ${formatPrice(codAdvanceAmount, settings.currencySymbol)} now to confirm (non-refundable) — ${formatPrice(
+          codRemainingAmount,
+          settings.currencySymbol
+        )} due in cash on delivery.`
+      : null
+
   if (items.length === 0) {
     return (
       <div className="max-w-xl mx-auto px-4 py-24 text-center">
@@ -62,7 +77,8 @@ export default function Checkout() {
     discountTotal,
     deliveryFee,
     total,
-    customerPhone: user?.phone
+    customerPhone: user?.phone,
+    customerEmail: address.email?.trim() || undefined
   })
 
   const finishOrder = async (order) => {
@@ -76,7 +92,9 @@ export default function Checkout() {
     await finishOrder(order)
   }
 
-  // Razorpay — the real three-step flow:
+  // Razorpay — the real three-step flow, shared by both a full online
+  // payment and a partial-COD advance payment (only the amount + what
+  // gets sent to razorpay_verify.php differ, see the two callers below):
   //   1. Ask our backend to create a Razorpay order (server-side, needs
   //      the secret key — never do this from the browser).
   //   2. Open Razorpay's hosted checkout with that order id.
@@ -84,9 +102,9 @@ export default function Checkout() {
   //      backend, which verifies the signature, cross-checks the amount
   //      against Razorpay's own record, creates our order, and queues it
   //      for a second independent verification pass in the background.
-  const handleRazorpayOrder = async () => {
-    const { razorpayOrderId, amount, currency, keyId } = await api.post('/razorpay_create_order.php', {
-      amount: total
+  const payViaRazorpay = async ({ amount, description, extraOrderData }) => {
+    const { razorpayOrderId, amount: amountPaise, currency, keyId } = await api.post('/razorpay_create_order.php', {
+      amount
     })
 
     await loadRazorpayScript()
@@ -94,11 +112,11 @@ export default function Checkout() {
     return new Promise((resolve, reject) => {
       const rzp = new window.Razorpay({
         key: keyId,
-        amount,
+        amount: amountPaise,
         currency,
         order_id: razorpayOrderId,
         name: 'GRAFIQ',
-        description: `Order payment — ${items.length} item${items.length > 1 ? 's' : ''}`,
+        description,
         prefill: { contact: user?.phone, name: address.name },
         theme: { color: '#000000' },
         handler: async (response) => {
@@ -107,7 +125,7 @@ export default function Checkout() {
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
-              orderData: { ...buildOrderData(), paymentMethod: 'Razorpay' }
+              orderData: { ...buildOrderData(), ...extraOrderData }
             })
             await finishOrder(order)
             resolve()
@@ -128,6 +146,24 @@ export default function Checkout() {
     })
   }
 
+  const handleRazorpayOrder = () =>
+    payViaRazorpay({
+      amount: total,
+      description: `Order payment — ${items.length} item${items.length > 1 ? 's' : ''}`,
+      extraOrderData: { paymentMethod: 'Razorpay', paidAmount: total }
+    })
+
+  // Partial-COD: charges just the non-refundable advance now; the order
+  // itself is still recorded as COD, with the remainder due in cash on
+  // delivery. `paidAmount` (≠ `total`) is what razorpay_verify.php
+  // cross-checks against what Razorpay actually charged.
+  const handleCodAdvancePayment = () =>
+    payViaRazorpay({
+      amount: codAdvanceAmount,
+      description: 'Advance payment to confirm your COD order (non-refundable)',
+      extraOrderData: { paymentMethod: 'COD', paidAmount: codAdvanceAmount, advanceAmount: codAdvanceAmount }
+    })
+
   // TODO(production): also point Razorpay's dashboard at
   // grafiq-api/razorpay_webhook.php once this is deployed publicly, so
   // payment confirmation doesn't rely solely on the customer's browser
@@ -143,7 +179,12 @@ export default function Checkout() {
     setPlacing(true)
     try {
       if (payment === 'cod') {
-        await handleCodOrder()
+        if (codAdvanceAmount > 0) {
+          const result = await handleCodAdvancePayment()
+          if (result === 'dismissed') setPlacing(false)
+        } else {
+          await handleCodOrder()
+        }
       } else {
         const result = await handleRazorpayOrder()
         if (result === 'dismissed') setPlacing(false)
@@ -166,7 +207,7 @@ export default function Checkout() {
         <div className="fixed inset-0 z-50 bg-ink/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
           <CircleLoader size={100} />
           <p className="font-accent uppercase tracking-widest text-sm text-slate">
-            {payment === 'cod' ? 'Placing your order…' : 'Setting up secure payment…'}
+            {payment === 'cod' && codAdvanceAmount === 0 ? 'Placing your order…' : 'Setting up secure payment…'}
           </p>
         </div>
       )}
@@ -181,7 +222,7 @@ export default function Checkout() {
 
             <section>
               <p className="font-accent uppercase tracking-wide text-volt mb-4">2. Payment Method</p>
-              <PaymentOptions selected={payment} onSelect={setPayment} />
+              <PaymentOptions selected={payment} onSelect={setPayment} codNote={codNote} />
             </section>
           </div>
 
@@ -217,6 +258,18 @@ export default function Checkout() {
               <span>Total</span>
               <span className="text-volt">{formatPrice(total, settings.currencySymbol)}</span>
             </div>
+            {payment === 'cod' && codAdvanceAmount > 0 && (
+              <div className="mt-2 pt-2 border-t border-dashed border-line flex flex-col gap-1 text-xs text-slate">
+                <div className="flex justify-between">
+                  <span>Pay now (non-refundable)</span>
+                  <span className="text-volt">{formatPrice(codAdvanceAmount, settings.currencySymbol)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Due on delivery</span>
+                  <span>{formatPrice(codRemainingAmount, settings.currencySymbol)}</span>
+                </div>
+              </div>
+            )}
             <Button
               variant="primary"
               size="lg"
@@ -225,8 +278,14 @@ export default function Checkout() {
               onClick={handlePlaceOrder}
             >
               {placing
-                ? payment === 'cod' ? 'Placing Order…' : 'Waiting for Payment…'
-                : payment === 'cod' ? 'Place Order' : `Pay ${formatPrice(total, settings.currencySymbol)}`}
+                ? payment === 'cod' && codAdvanceAmount === 0
+                  ? 'Placing Order…'
+                  : 'Waiting for Payment…'
+                : payment === 'cod'
+                ? codAdvanceAmount > 0
+                  ? `Pay ${formatPrice(codAdvanceAmount, settings.currencySymbol)} to Confirm`
+                  : 'Place Order'
+                : `Pay ${formatPrice(total, settings.currencySymbol)}`}
             </Button>
             {hasErrors && (
               <p className="text-red-400 text-xs mt-2 text-center">

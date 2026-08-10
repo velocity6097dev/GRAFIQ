@@ -1,49 +1,16 @@
 <?php
 require __DIR__ . '/config.php';
 
-function row_to_order(array $r): array
-{
-    $createdAt = null;
-    if (!empty($r['created_at'])) {
-        $createdAt = (new DateTime($r['created_at']))->format(DATE_ATOM);
-    }
-    $cancelledAt = null;
-    if (!empty($r['cancelled_at'])) {
-        $cancelledAt = (new DateTime($r['cancelled_at']))->format(DATE_ATOM);
-    }
-    return [
-        'id'                 => $r['id'],
-        'customerPhone'      => $r['customer_phone'],
-        'status'             => $r['status'],
-        'statusHistory'      => decode_json_column($r['status_history']),
-        'items'              => decode_json_column($r['items']),
-        'address'            => decode_json_column($r['address'], new stdClass()),
-        'paymentMethod'      => $r['payment_method'],
-        'paymentStatus'      => $r['payment_status'],
-        'subtotal'           => (float) $r['subtotal'],
-        'discountTotal'      => (float) $r['discount_total'],
-        'deliveryFee'        => (float) $r['delivery_fee'],
-        'total'              => (float) $r['total'],
-        'shipping'           => decode_json_column($r['shipping'], null),
-        'cancelledAt'        => $cancelledAt,
-        'cancellationReason' => $r['cancellation_reason'],
-        'refundStatus'       => $r['refund_status'],
-        'createdAt'          => $createdAt,
-    ];
-}
-
 $method = $_SERVER['REQUEST_METHOD'];
 $id = $_GET['id'] ?? null;
 
 switch ($method) {
     case 'GET':
         if ($id) {
-            $stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
-            $stmt->execute([$id]);
-            $row = $stmt->fetch();
+            $row = fetch_order_row($pdo, $id);
             send_json($row ? row_to_order($row) : null);
         }
-        $stmt = $pdo->query('SELECT * FROM orders ORDER BY created_at DESC');
+        $stmt = $pdo->query(order_select_sql() . ' ORDER BY o.created_at DESC');
         send_json(array_map('row_to_order', $stmt->fetchAll()));
         break;
 
@@ -60,13 +27,15 @@ switch ($method) {
         }
 
         $initialHistory = [['status' => 'Pending', 'at' => (new DateTime())->format(DATE_ATOM)]];
+        $email = $data['customerEmail'] ?? ($data['address']['email'] ?? null);
 
         $pdo->prepare(
-            'INSERT INTO orders (id, customer_phone, status, status_history, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, shipping)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO orders (id, customer_phone, customer_email, status, status_history, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, advance_amount, advance_paid, shipping)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         )->execute([
             $newId,
             $data['customerPhone'] ?? null,
+            $email ?: null,
             'Pending',
             json_encode($initialHistory),
             json_encode($data['items']),
@@ -77,12 +46,17 @@ switch ($method) {
             $data['discountTotal'] ?? 0,
             $data['deliveryFee'] ?? 0,
             $data['total'] ?? 0,
+            // No advance was collected here — this endpoint is only ever hit
+            // for plain COD (settings.codAdvancePercent is 0). A COD order
+            // that DID need an upfront advance goes through
+            // razorpay_verify.php instead, which records the real amount.
+            0,
+            0,
             null,
         ]);
 
-        $stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
-        $stmt->execute([$newId]);
-        send_json(row_to_order($stmt->fetch()), 201);
+        $row = fetch_order_row($pdo, $newId);
+        send_json(row_to_order($row), 201);
         break;
 
     case 'PUT':
@@ -112,6 +86,14 @@ switch ($method) {
             $sets[] = 'refund_status = ?';
             $values[] = $data['refundStatus'];
         }
+        if (array_key_exists('customerEmail', $data)) {
+            $sets[] = 'customer_email = ?';
+            $values[] = $data['customerEmail'] ?: null;
+        }
+        if (array_key_exists('adminNotes', $data)) {
+            $sets[] = 'admin_notes = ?';
+            $values[] = $data['adminNotes'] ?: null;
+        }
         if (array_key_exists('shipping', $data)) {
             // Merge, not replace — matches the frontend's updateOrderShipping,
             // which folds a partial patch (e.g. just a tracking ID) into
@@ -127,9 +109,8 @@ switch ($method) {
             $pdo->prepare('UPDATE orders SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($values);
         }
 
-        $stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
-        $stmt->execute([$id]);
-        send_json(row_to_order($stmt->fetch()));
+        $row = fetch_order_row($pdo, $id);
+        send_json(row_to_order($row));
         break;
 
     default:

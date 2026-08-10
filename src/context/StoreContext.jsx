@@ -25,7 +25,8 @@ const EMPTY_SETTINGS = {
   instagram: '',
   facebook: '',
   twitter: '',
-  features: []
+  features: [],
+  codAdvancePercent: 0
 }
 
 export function StoreProvider({ children }) {
@@ -237,6 +238,32 @@ export function StoreProvider({ children }) {
     return updated
   }
 
+  // Admin-only: free-text internal notes on an order (never shown to
+  // customers).
+  const updateOrderNotes = async (id, adminNotes) => {
+    const updated = await api.put(`/orders.php?id=${id}`, { adminNotes })
+    setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)))
+    return updated
+  }
+
+  // Admin-only: re-checks the order's linked Razorpay payment directly
+  // against Razorpay's API (independent of the background queue worker) —
+  // the "Verify Payment" button in the order's Payment section.
+  const verifyOrderPayment = async (id) => {
+    const updated = await api.post('/payment_action.php', { orderId: id, action: 'verify' })
+    setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)))
+    return updated
+  }
+
+  // Admin-only: issues a refund (full, or a manually-chosen partial
+  // amount — e.g. a COD advance minus shipping charges) against the
+  // order's linked Razorpay payment.
+  const refundOrderPayment = async (id, amount) => {
+    const updated = await api.post('/payment_action.php', { orderId: id, action: 'refund', amount })
+    setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)))
+    return updated
+  }
+
   // ---------- Replacements ----------
   const requestReplacement = async (payload) => {
     const created = await api.post('/replacements.php', payload)
@@ -281,6 +308,9 @@ export function StoreProvider({ children }) {
       updateOrderShipping,
       cancelOrder,
       updateOrderRefundStatus,
+      updateOrderNotes,
+      verifyOrderPayment,
+      refundOrderPayment,
       requestReplacement,
       updateReplacement
     }),

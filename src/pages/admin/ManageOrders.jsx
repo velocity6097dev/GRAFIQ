@@ -19,6 +19,7 @@ const statusTone = {
 
 const paymentTone = {
   paid: 'text-volt',
+  partial: 'text-amber-400',
   unpaid: 'text-slate',
   failed: 'text-red-400'
 }

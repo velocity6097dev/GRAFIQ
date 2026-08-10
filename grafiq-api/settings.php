@@ -16,6 +16,11 @@ function row_to_settings(array $r): array
         'facebook'          => $r['facebook'],
         'twitter'           => $r['twitter'],
         'features'          => decode_json_column($r['features']),
+        // Partial-COD: % of the order total a customer must pay upfront
+        // (online, via Razorpay) to confirm a Cash-on-Delivery order
+        // before it ships. 0 = COD works as a normal, fully-pay-on-
+        // delivery order — the historical/default behaviour.
+        'codAdvancePercent' => (float) ($r['cod_advance_percent'] ?? 0),
     ];
 }
 
@@ -38,13 +43,20 @@ switch ($method) {
             'freeDeliveryAbove' => 'free_delivery_above', 'contactEmail' => 'contact_email',
             'contactPhone' => 'contact_phone', 'instagram' => 'instagram',
             'facebook' => 'facebook', 'twitter' => 'twitter',
+            'codAdvancePercent' => 'cod_advance_percent',
         ];
         $sets = [];
         $values = [];
         foreach ($columnMap as $key => $column) {
             if (array_key_exists($key, $data)) {
+                $value = $data[$key];
+                if ($key === 'codAdvancePercent') {
+                    // Clamp to a sane 0–100% range regardless of what the
+                    // client sends.
+                    $value = max(0, min(100, (float) $value));
+                }
                 $sets[] = "$column = ?";
-                $values[] = $data[$key];
+                $values[] = $value;
             }
         }
         if (array_key_exists('features', $data)) {

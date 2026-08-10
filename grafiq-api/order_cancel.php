@@ -13,33 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // is just the friendly version of the same rule.
 const CANCELLABLE_STATUSES = ['Pending', 'Confirmed', 'Processing'];
 
-function row_to_order_local(array $r): array
-{
-    $createdAt = null;
-    if (!empty($r['created_at'])) $createdAt = (new DateTime($r['created_at']))->format(DATE_ATOM);
-    $cancelledAt = null;
-    if (!empty($r['cancelled_at'])) $cancelledAt = (new DateTime($r['cancelled_at']))->format(DATE_ATOM);
-    return [
-        'id'                 => $r['id'],
-        'customerPhone'      => $r['customer_phone'],
-        'status'             => $r['status'],
-        'statusHistory'      => decode_json_column($r['status_history']),
-        'items'              => decode_json_column($r['items']),
-        'address'            => decode_json_column($r['address'], new stdClass()),
-        'paymentMethod'      => $r['payment_method'],
-        'paymentStatus'      => $r['payment_status'],
-        'subtotal'           => (float) $r['subtotal'],
-        'discountTotal'      => (float) $r['discount_total'],
-        'deliveryFee'        => (float) $r['delivery_fee'],
-        'total'              => (float) $r['total'],
-        'shipping'           => decode_json_column($r['shipping'], null),
-        'cancelledAt'        => $cancelledAt,
-        'cancellationReason' => $r['cancellation_reason'],
-        'refundStatus'       => $r['refund_status'],
-        'createdAt'          => $createdAt,
-    ];
-}
-
 $data = request_body();
 $orderId = $data['orderId'] ?? '';
 $phone = preg_replace('/\D/', '', $data['customerPhone'] ?? '');
@@ -81,6 +54,11 @@ try {
     )->execute([json_encode($history), $reason ?: null, $orderId]);
 
     $refundStatus = null;
+    // Note: a 'partial' payment_status means this was a partial-COD order
+    // — the customer paid a non-refundable advance to confirm it, and the
+    // rest was due in cash on delivery. That advance is deliberately NOT
+    // auto-refunded here; admins issue any refund manually (after
+    // deducting shipping etc.) from the order's Payment section.
     if ($order['payment_status'] === 'paid') {
         // Real refund attempt via Razorpay, not just a status flag —
         // mirrors the same razorpay_request() helper the payment queue
@@ -126,6 +104,5 @@ try {
     send_error('Could not cancel the order: ' . $e->getMessage(), 500);
 }
 
-$stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
-$stmt->execute([$orderId]);
-send_json(row_to_order_local($stmt->fetch()));
+$row = fetch_order_row($pdo, $orderId);
+send_json(row_to_order($row));

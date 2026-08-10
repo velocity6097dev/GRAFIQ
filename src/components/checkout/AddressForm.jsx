@@ -55,6 +55,18 @@ export default function AddressForm({ address, onChange, errors = {} }) {
         />
       </Field>
 
+      {/* Optional — not validated/required, just surfaced to admin on the
+          order page (Customer section) if the shopper chooses to add it. */}
+      <Field className="sm:col-span-2" error={errors.email}>
+        <input
+          className={cls('email')}
+          placeholder="Email (optional)"
+          type="email"
+          value={address.email || ''}
+          onChange={set('email')}
+        />
+      </Field>
+
       <Field className="sm:col-span-2" error={errors.line1}>
         <textarea
           className={`${cls('line1')} min-h-[80px]`}

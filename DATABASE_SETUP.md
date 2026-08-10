@@ -120,12 +120,16 @@ files.
 ## Already have a database from before?
 
 If you'd previously set this up and just want the newer features
-(order cancellation, replacement requests, order status timeline), run
-these two files in phpMyAdmin's **Import** tab — in this order — instead
-of re-importing the whole `schema.sql` (which would wipe your data):
+(order cancellation, replacement requests, order status timeline, the
+expanded admin order page, or partial-COD), run these files in
+phpMyAdmin's **Import** tab — in this order — instead of re-importing
+the whole `schema.sql` (which would wipe your data):
 
-1. `grafiq-api/migration_razorpay.sql` (if you haven't already)
-2. `grafiq-api/migration_order_tracking.sql`
+1. `grafiq-api/schema/migration/migration_razorpay.sql` (if you haven't already)
+2. `grafiq-api/schema/migration/migration_order_tracking.sql`
+3. `grafiq-api/schema/migration/migration_admin_order_page.sql` — customer
+   email + admin notes on the order page, and partial-COD (advance
+   amount tracking + the `codAdvancePercent` setting)
 
 ## Next steps (not done yet, happy to build these on request)
 - A real SMS gateway for OTP (currently a demo code, `1234`, for every

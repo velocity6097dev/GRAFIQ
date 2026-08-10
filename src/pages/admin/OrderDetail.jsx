@@ -1,9 +1,24 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Truck, Star, CheckCircle2, RefreshCw, Save } from 'lucide-react'
+import {
+  ArrowLeft,
+  Truck,
+  Star,
+  CheckCircle2,
+  Circle,
+  RefreshCw,
+  Save,
+  User,
+  ShieldCheck,
+  RotateCcw,
+  FileText,
+  ExternalLink
+} from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import { formatPrice, generateTrackingId } from '../../utils/format'
-import { getShippingQuotes } from '../../utils/shipping'
+import { getShippingQuotes, getTrackingUrl } from '../../utils/shipping'
+import { buildAdminActivity, formatTimelineDate } from '../../utils/orderTimeline'
+import { openInvoice } from '../../utils/invoice'
 import shippingPartners from '../../data/shippingPartners'
 import Button from '../../components/ui/Button'
 import CircleLoader from '../../components/ui/CircleLoader'
@@ -12,6 +27,7 @@ const STATUSES = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Out for Deli
 
 const statusTone = {
   Pending: 'text-slate',
+  Booked: 'text-volt',
   Confirmed: 'text-volt',
   Processing: 'text-volt',
   Shipped: 'text-volt',
@@ -22,13 +38,25 @@ const statusTone = {
 
 const paymentStatusTone = {
   paid: 'text-volt',
+  partial: 'text-amber-400',
   unpaid: 'text-slate',
   failed: 'text-red-400'
 }
 
 export default function OrderDetail() {
   const { id } = useParams()
-  const { orders, replacements, settings, loading, updateOrderStatus, updateOrderShipping, updateOrderRefundStatus } = useStore()
+  const {
+    orders,
+    replacements,
+    settings,
+    loading,
+    updateOrderStatus,
+    updateOrderShipping,
+    updateOrderRefundStatus,
+    updateOrderNotes,
+    verifyOrderPayment,
+    refundOrderPayment
+  } = useStore()
   const order = orders.find((o) => o.id === id)
   const linkedReplacements = replacements.filter((r) => r.orderId === id)
 
@@ -38,10 +66,20 @@ export default function OrderDetail() {
   const [bookingId, setBookingId] = useState(null)
   const [actionError, setActionError] = useState('')
 
+  const [notesInput, setNotesInput] = useState(order?.adminNotes || '')
+  const [notesSaved, setNotesSaved] = useState(false)
+  const [savingNotes, setSavingNotes] = useState(false)
+
+  const [verifying, setVerifying] = useState(false)
+  const [showRefundForm, setShowRefundForm] = useState(false)
+  const [refundAmount, setRefundAmount] = useState('')
+  const [refunding, setRefunding] = useState(false)
+
   const quotes = useMemo(
     () => (order ? getShippingQuotes(order, shippingPartners) : []),
     [order]
   )
+  const activity = useMemo(() => buildAdminActivity(order), [order])
 
   if (!order) {
     if (loading) {
@@ -70,6 +108,64 @@ export default function OrderDetail() {
       setActionError(err.message || 'Could not save the tracking ID.')
     }
   }
+
+  const handleSaveNotes = async () => {
+    setSavingNotes(true)
+    setActionError('')
+    try {
+      await updateOrderNotes(order.id, notesInput.trim())
+      setNotesSaved(true)
+      setTimeout(() => setNotesSaved(false), 2000)
+    } catch (err) {
+      setActionError(err.message || 'Could not save the admin notes.')
+    } finally {
+      setSavingNotes(false)
+    }
+  }
+
+  const handleVerifyPayment = async () => {
+    setVerifying(true)
+    setActionError('')
+    try {
+      await verifyOrderPayment(order.id)
+    } catch (err) {
+      setActionError(err.message || 'Could not verify this payment right now.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const openRefundForm = () => {
+    setRefundAmount(order.payment?.amount ? String(order.payment.amount) : '')
+    setShowRefundForm(true)
+    setActionError('')
+  }
+
+  const handleRefund = async () => {
+    const amount = Number(refundAmount)
+    if (!amount || amount <= 0) {
+      setActionError('Enter a refund amount greater than 0.')
+      return
+    }
+    setRefunding(true)
+    setActionError('')
+    try {
+      await refundOrderPayment(order.id, amount)
+      setShowRefundForm(false)
+    } catch (err) {
+      setActionError(err.message || 'Could not process this refund.')
+    } finally {
+      setRefunding(false)
+    }
+  }
+
+  const handleTrackShipment = () => {
+    if (!order.shipping?.trackingId) return
+    const url = getTrackingUrl(order.shipping.courierName, order.shipping.trackingId)
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handlePrintInvoice = () => openInvoice(order, settings)
 
   // NOTE: booking is simulated with a short delay and a generated tracking
   // number. Wire this up to a real courier-aggregator API (Shiprocket,
@@ -102,6 +198,15 @@ export default function OrderDetail() {
     }, 900)
   }
 
+  // "Shipping Status" for the Shipping Partner card — order.status once a
+  // courier is booked, or "Booked" if it's booked but hasn't moved to
+  // Shipped/etc. yet.
+  const shippingStatusLabel = order.shipping?.courierName
+    ? ['Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'].includes(order.status)
+      ? order.status
+      : 'Booked'
+    : null
+
   return (
     <div>
       <Link to="/admin/orders" className="inline-flex items-center gap-1.5 text-sm text-slate hover:text-volt mb-6">
@@ -117,21 +222,26 @@ export default function OrderDetail() {
             })}
           </p>
         </div>
-        <select
-          value={order.status}
-          onChange={(e) => updateOrderStatus(order.id, e.target.value).catch((err) => setActionError(err.message))}
-          className={`bg-panel border border-line px-3 py-2 text-sm font-accent uppercase outline-none ${statusTone[order.status]}`}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s} style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>{s}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-3">
+          <Button size="md" variant="outline" onClick={handlePrintInvoice} className="px-4 py-2 text-xs">
+            <FileText size={13} /> Print / Download Invoice
+          </Button>
+          <select
+            value={order.status}
+            onChange={(e) => updateOrderStatus(order.id, e.target.value).catch((err) => setActionError(err.message))}
+            className={`bg-panel border border-line px-3 py-2 text-sm font-accent uppercase outline-none ${statusTone[order.status]}`}
+          >
+            {STATUSES.map((s) => (
+              <option key={s} value={s} style={{ backgroundColor: '#1A1A1A', color: '#FFFFFF' }}>{s}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {actionError && <p className="text-red-400 text-sm mb-6">{actionError}</p>}
 
       <div className="grid lg:grid-cols-[1fr_380px] gap-8">
-        {/* Left: customer, items, payment */}
+        {/* Left: address, customer, items, payment, notes */}
         <div className="flex flex-col gap-8">
           <section className="border border-line p-5">
             <p className="font-accent uppercase tracking-wide text-volt mb-4">Shipping Address</p>
@@ -141,6 +251,15 @@ export default function OrderDetail() {
               {order.address?.city}, {order.address?.state} — {order.address?.pincode}
             </p>
             <p className="text-slate text-sm mt-1">+91 {order.address?.phone}</p>
+          </section>
+
+          <section className="border border-line p-5">
+            <p className="font-accent uppercase tracking-wide text-volt mb-4 flex items-center gap-2">
+              <User size={14} /> Customer
+            </p>
+            <p className="font-accent">{order.address?.name || '—'}</p>
+            <p className="text-slate text-sm mt-1">+91 {order.customerPhone || order.address?.phone || '—'}</p>
+            <p className="text-slate text-sm mt-1">{order.customerEmail || 'No email provided'}</p>
           </section>
 
           <section className="border border-line p-5">
@@ -182,11 +301,131 @@ export default function OrderDetail() {
           </section>
 
           <section className="border border-line p-5">
-            <p className="font-accent uppercase tracking-wide text-volt mb-2">Payment</p>
-            <p className="text-sm text-slate uppercase">{order.paymentMethod}</p>
-            <p className={`text-sm font-accent uppercase mt-1 ${paymentStatusTone[order.paymentStatus] || 'text-slate'}`}>
-              {order.paymentStatus}
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-accent uppercase tracking-wide text-volt">Payment</p>
+              {order.payment?.razorpayPaymentId && (
+                <button
+                  onClick={handleVerifyPayment}
+                  disabled={verifying}
+                  className="flex items-center gap-1 text-xs text-slate hover:text-volt disabled:opacity-50"
+                >
+                  <ShieldCheck size={12} /> {verifying ? 'Verifying…' : 'Verify Payment'}
+                </button>
+              )}
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <p className="text-xs text-slate uppercase font-accent mb-1">Method</p>
+                <p>{order.paymentMethod || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate uppercase font-accent mb-1">Status</p>
+                <p className={`font-accent uppercase ${paymentStatusTone[order.paymentStatus] || 'text-slate'}`}>
+                  {order.paymentStatus}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate uppercase font-accent mb-1">Order Total</p>
+                <p>{formatPrice(order.total, settings.currencySymbol)}</p>
+              </div>
+              {order.advancePaid && order.advanceAmount > 0 && (
+                <>
+                  <div>
+                    <p className="text-xs text-slate uppercase font-accent mb-1">Advance Paid (non-refundable)</p>
+                    <p className="text-amber-400">{formatPrice(order.advanceAmount, settings.currencySymbol)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate uppercase font-accent mb-1">Due on Delivery</p>
+                    <p>{formatPrice(order.total - order.advanceAmount, settings.currencySymbol)}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {order.payment ? (
+              <div className="mt-4 pt-4 border-t border-line grid sm:grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-xs text-slate uppercase font-accent mb-1">Razorpay Order ID</p>
+                  <p className="text-xs font-mono break-all">{order.payment.razorpayOrderId || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate uppercase font-accent mb-1">Razorpay Payment ID</p>
+                  <p className="text-xs font-mono break-all">{order.payment.razorpayPaymentId || '—'}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate mt-4 pt-4 border-t border-line">
+                No online payment linked to this order{order.paymentMethod === 'COD' ? ' — plain Cash on Delivery.' : '.'}
+              </p>
+            )}
+
+            {order.payment?.razorpayPaymentId && (
+              <div className="mt-4 pt-4 border-t border-line">
+                {!showRefundForm ? (
+                  <Button size="md" variant="outline" onClick={openRefundForm} className="px-4 py-2 text-xs">
+                    <RotateCcw size={13} /> Refund
+                  </Button>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs text-slate uppercase font-accent">
+                      Refund Amount ({settings.currencySymbol})
+                    </label>
+                    <div className="flex gap-2 flex-wrap">
+                      <input
+                        type="number"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        className="flex-1 min-w-[8rem] bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2 text-sm"
+                      />
+                      <Button
+                        size="md"
+                        variant="primary"
+                        onClick={handleRefund}
+                        disabled={refunding}
+                        className="px-4 py-2 text-xs"
+                      >
+                        {refunding ? 'Processing…' : 'Confirm Refund'}
+                      </Button>
+                      <Button
+                        size="md"
+                        variant="ghost"
+                        onClick={() => setShowRefundForm(false)}
+                        className="px-3 py-2 text-xs"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                    <p className="text-xs text-slate">
+                      Defaults to the full {formatPrice(order.payment.amount, settings.currencySymbol)} that was paid.
+                      Lower it to deduct shipping charges etc. before refunding the rest.
+                    </p>
+                  </div>
+                )}
+                {order.refundStatus && (
+                  <p className="text-xs text-slate mt-3">
+                    Refund status: <span className="text-paper">{order.refundStatus}</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="border border-line p-5">
+            <p className="font-accent uppercase tracking-wide text-volt mb-4">Admin Notes</p>
+            <textarea
+              value={notesInput}
+              onChange={(e) => setNotesInput(e.target.value)}
+              placeholder="Internal notes — call summaries, special instructions, etc. Not visible to the customer."
+              rows={3}
+              className="w-full bg-transparent border border-paper/25 focus:border-volt outline-none px-3 py-2 text-sm resize-y"
+            />
+            <div className="flex items-center gap-3 mt-2">
+              <Button size="md" variant="outline" onClick={handleSaveNotes} disabled={savingNotes} className="px-4 py-2 text-xs">
+                <Save size={13} /> {savingNotes ? 'Saving…' : 'Save Notes'}
+              </Button>
+              {notesSaved && <p className="text-volt text-xs">Saved ✓</p>}
+            </div>
           </section>
 
           {order.status === 'Cancelled' && (
@@ -224,8 +463,32 @@ export default function OrderDetail() {
           )}
         </div>
 
-        {/* Right: tracking + shipping partner comparison */}
+        {/* Right: activity, tracking, replacements, shipping partner */}
         <div className="flex flex-col gap-6">
+          <section className="border border-line p-5">
+            <p className="font-accent uppercase tracking-wide text-volt mb-4">Order Activity</p>
+            <div className="flex flex-col">
+              {activity.map((step, i) => (
+                <div key={step.key} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    {step.done ? (
+                      <CheckCircle2 size={16} className="text-volt shrink-0" />
+                    ) : (
+                      <Circle size={16} className="text-slate shrink-0" />
+                    )}
+                    {i < activity.length - 1 && (
+                      <div className={`w-px flex-1 my-1 ${step.done ? 'bg-volt/40' : 'bg-line'}`} style={{ minHeight: '1.25rem' }} />
+                    )}
+                  </div>
+                  <div className="pb-4">
+                    <p className={`text-sm font-accent uppercase ${step.done ? 'text-paper' : 'text-slate'}`}>{step.label}</p>
+                    {step.at && <p className="text-xs text-slate mt-0.5">{formatTimelineDate(step.at)}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className="border border-line p-5">
             <p className="font-accent uppercase tracking-wide text-volt mb-4">Tracking ID</p>
             <div className="flex gap-2">
@@ -291,13 +554,58 @@ export default function OrderDetail() {
 
           <section className="border border-line p-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="font-accent uppercase tracking-wide text-volt">Shipping Partners</p>
-              <button
-                onClick={() => setShowCompare((v) => !v)}
-                className="flex items-center gap-1 text-xs text-slate hover:text-volt"
-              >
-                <RefreshCw size={12} /> {showCompare ? 'Hide' : order.shipping?.courierName ? 'Change Courier' : 'Compare'}
-              </button>
+              <p className="font-accent uppercase tracking-wide text-volt">Shipping Partner</p>
+              {order.shipping?.courierName && (
+                <button
+                  onClick={() => setShowCompare((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-slate hover:text-volt"
+                >
+                  <RefreshCw size={12} /> {showCompare ? 'Hide' : 'Change Courier'}
+                </button>
+              )}
+            </div>
+
+            {order.shipping?.courierName ? (
+              <div className="grid sm:grid-cols-2 gap-x-4 gap-y-3 text-sm mb-4">
+                <div>
+                  <p className="text-xs text-slate uppercase font-accent mb-1">Courier</p>
+                  <p>{order.shipping.courierName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate uppercase font-accent mb-1">Tracking Number</p>
+                  <p className="font-mono text-xs">{order.shipping.trackingId || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate uppercase font-accent mb-1">Shipping Status</p>
+                  <p className={`font-accent uppercase text-xs ${statusTone[shippingStatusLabel] || 'text-volt'}`}>
+                    {shippingStatusLabel}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate uppercase font-accent mb-1">Booked</p>
+                  <p className="text-xs text-slate">
+                    {order.shipping.bookedAt ? new Date(order.shipping.bookedAt).toLocaleString('en-IN') : '—'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate mb-4">No courier booked yet — compare rates below and book one.</p>
+            )}
+
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {order.shipping?.trackingId && (
+                <Button size="md" variant="outline" onClick={handleTrackShipment} className="px-4 py-2 text-xs">
+                  <ExternalLink size={13} /> Track Shipment
+                </Button>
+              )}
+              {!order.shipping?.courierName && (
+                <button
+                  onClick={() => setShowCompare((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-slate hover:text-volt"
+                >
+                  <RefreshCw size={12} /> {showCompare ? 'Hide' : 'Compare Couriers'}
+                </button>
+              )}
             </div>
 
             {showCompare && (

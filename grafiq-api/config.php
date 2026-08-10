@@ -141,6 +141,88 @@ function razorpay_configured(): bool
 }
 
 /**
+ * Base SELECT for `orders`, left-joined to its most recent `payments` row
+ * (correlated subquery picks the latest by created_at). Every endpoint
+ * that returns order(s) — orders.php, razorpay_verify.php,
+ * order_cancel.php, payment_action.php — shares this + row_to_order()
+ * below so the shape returned to the frontend never drifts between them.
+ */
+function order_select_sql(string $where = ''): string
+{
+    return "SELECT o.*,
+                lp.razorpay_order_id   AS p_razorpay_order_id,
+                lp.razorpay_payment_id AS p_razorpay_payment_id,
+                lp.amount              AS p_amount,
+                lp.status              AS p_status,
+                lp.verified_at         AS p_verified_at,
+                lp.created_at          AS p_payment_created_at
+            FROM orders o
+            LEFT JOIN payments lp ON lp.id = (
+                SELECT p2.id FROM payments p2 WHERE p2.order_id = o.id ORDER BY p2.created_at DESC LIMIT 1
+            )
+            $where";
+}
+
+function fetch_order_row(PDO $pdo, string $id): ?array
+{
+    $stmt = $pdo->prepare(order_select_sql('WHERE o.id = ?'));
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/**
+ * Shared order → API-shape mapper. `r` is a row from order_select_sql()
+ * (i.e. already carries the joined p_* payment columns, possibly all
+ * NULL if this order has no payments row).
+ */
+function row_to_order(array $r): array
+{
+    $createdAt = !empty($r['created_at']) ? (new DateTime($r['created_at']))->format(DATE_ATOM) : null;
+    $cancelledAt = !empty($r['cancelled_at']) ? (new DateTime($r['cancelled_at']))->format(DATE_ATOM) : null;
+
+    $payment = null;
+    if (!empty($r['p_razorpay_payment_id']) || !empty($r['p_razorpay_order_id'])) {
+        $payment = [
+            'razorpayOrderId'   => $r['p_razorpay_order_id'],
+            'razorpayPaymentId' => $r['p_razorpay_payment_id'],
+            'amount'            => $r['p_amount'] !== null ? (float) $r['p_amount'] : null,
+            'status'            => $r['p_status'],
+            'verifiedAt'        => !empty($r['p_verified_at']) ? (new DateTime($r['p_verified_at']))->format(DATE_ATOM) : null,
+            'createdAt'         => !empty($r['p_payment_created_at']) ? (new DateTime($r['p_payment_created_at']))->format(DATE_ATOM) : null,
+        ];
+    }
+
+    return [
+        'id'                 => $r['id'],
+        'customerPhone'      => $r['customer_phone'],
+        'customerEmail'      => $r['customer_email'] ?? null,
+        'status'             => $r['status'],
+        'statusHistory'      => decode_json_column($r['status_history']),
+        'items'              => decode_json_column($r['items']),
+        'address'            => decode_json_column($r['address'], new stdClass()),
+        'paymentMethod'      => $r['payment_method'],
+        'paymentStatus'      => $r['payment_status'],
+        'subtotal'           => (float) $r['subtotal'],
+        'discountTotal'      => (float) $r['discount_total'],
+        'deliveryFee'        => (float) $r['delivery_fee'],
+        'total'              => (float) $r['total'],
+        // Non-refundable COD advance (see partial-COD feature): amount
+        // collected upfront online, ahead of shipping, when
+        // settings.codAdvancePercent > 0 at the time this order was placed.
+        'advanceAmount'      => (float) ($r['advance_amount'] ?? 0),
+        'advancePaid'        => (bool) ($r['advance_paid'] ?? 0),
+        'shipping'           => decode_json_column($r['shipping'], null),
+        'cancelledAt'        => $cancelledAt,
+        'cancellationReason' => $r['cancellation_reason'],
+        'refundStatus'       => $r['refund_status'],
+        'adminNotes'         => $r['admin_notes'] ?? null,
+        'payment'            => $payment,
+        'createdAt'          => $createdAt,
+    ];
+}
+
+/**
  * Calls Razorpay's REST API (https://api.razorpay.com/v1/...) with your
  * key_id/key_secret as HTTP Basic Auth, exactly as their docs specify.
  * Returns [httpStatusCode, decodedJsonBody]. Throws RuntimeException if

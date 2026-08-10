@@ -80,7 +80,12 @@ CREATE TABLE settings (
   instagram           VARCHAR(255),
   facebook            VARCHAR(255),
   twitter             VARCHAR(255),
-  features            JSON NULL
+  features            JSON NULL,
+  -- Partial-COD: % of an order's total a customer must pay upfront online
+  -- (Razorpay) to confirm a Cash-on-Delivery order before it ships; the
+  -- rest is collected in cash on delivery. 0 = COD behaves as a normal,
+  -- fully-pay-on-delivery order (no upfront charge at all).
+  cod_advance_percent DECIMAL(5,2) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB;
 
 CREATE TABLE admin_users (
@@ -100,6 +105,10 @@ CREATE TABLE customers (
 CREATE TABLE orders (
   id                   VARCHAR(20) PRIMARY KEY,
   customer_phone       VARCHAR(15),
+  -- Optional — collected at checkout alongside phone/address. Shown in
+  -- the admin order page's Customer section; nothing in the app requires
+  -- it (OTP login only ever needed the phone number).
+  customer_email       VARCHAR(150) NULL,
   status               VARCHAR(30) NOT NULL DEFAULT 'Pending',
   -- JSON array of {status, at} entries — one appended every time `status`
   -- changes (see orders.php). This is what powers the customer-facing
@@ -110,11 +119,21 @@ CREATE TABLE orders (
   items                JSON NULL,
   address              JSON NULL,
   payment_method       VARCHAR(30),
+  -- unpaid | partial | paid | failed. 'partial' = partial-COD: the
+  -- non-refundable advance was paid online via Razorpay, the rest is due
+  -- in cash on delivery. See advance_amount/advance_paid below.
   payment_status       VARCHAR(20) NOT NULL DEFAULT 'unpaid',
   subtotal             DECIMAL(10,2) DEFAULT 0,
   discount_total       DECIMAL(10,2) DEFAULT 0,
   delivery_fee         DECIMAL(10,2) DEFAULT 0,
   total                DECIMAL(10,2) DEFAULT 0,
+  -- Partial-COD advance actually collected online for this order (0 for
+  -- every order placed while settings.cod_advance_percent was 0, and for
+  -- all non-COD orders). By policy this amount is non-refundable if the
+  -- order is later cancelled — any refund of it is a manual admin action
+  -- (Payment section → Refund), not automatic.
+  advance_amount       DECIMAL(10,2) NOT NULL DEFAULT 0,
+  advance_paid         TINYINT(1) NOT NULL DEFAULT 0,
   shipping             JSON NULL,
   cancelled_at         TIMESTAMP NULL,
   cancellation_reason  VARCHAR(255) NULL,
@@ -122,6 +141,9 @@ CREATE TABLE orders (
   -- applicable" (never paid, or never cancelled). See order_cancel.php.
   refund_status        VARCHAR(20) NULL, -- pending | processing | refunded | failed
   refund_id            VARCHAR(64) NULL,
+  -- Free-text, admin-only (never shown to customers) — space for internal
+  -- context on this order (special instructions, call notes, etc).
+  admin_notes          TEXT NULL,
   created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -237,9 +259,10 @@ INSERT INTO banners (id, eyebrow, title_line1, title_highlight1, title_line2, ti
   'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=1000&q=80',
   JSON_OBJECT('label','Grab the Deal','link','/shop?category=cat-hoodies'), NULL, 1, 3);
 
-INSERT INTO settings (id, store_name, tagline, ticker_text, currency_symbol, delivery_fee, free_delivery_above, contact_email, contact_phone, instagram, facebook, twitter, features) VALUES
+INSERT INTO settings (id, store_name, tagline, ticker_text, currency_symbol, delivery_fee, free_delivery_above, contact_email, contact_phone, instagram, facebook, twitter, cod_advance_percent, features) VALUES
 (1, 'GRAFIQ', "Not just clothes, it's your identity.", 'YOU IMAGINE. WE CREATE. YOU WEAR. YOU STAND OUT.', '₹', 79, 999,
   'hello@grafiq.in', '+91 98765 43210', 'https://instagram.com/grafiq.in', 'https://facebook.com/grafiq.in', 'https://twitter.com/grafiq_in',
+  0,
   JSON_ARRAY(
     JSON_OBJECT('id','f1','icon','shirt','title','Premium Quality','desc','Built to last. Made to feel.'),
     JSON_OBJECT('id','f2','icon','palette','title','Unlimited Designs','desc','Endless ideas. One destination.'),

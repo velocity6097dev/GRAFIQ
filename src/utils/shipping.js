@@ -28,3 +28,14 @@ export function getShippingQuotes(order, partners) {
     }))
     .sort((a, b) => a.price - b.price)
 }
+
+// Opens a tracking lookup for a booked shipment. There's no real courier
+// API wired up yet (see the note above), so rather than guess at a
+// specific carrier's deep-link URL format (and risk sending the admin to
+// a broken page), this points at a prefilled search that reliably lands
+// on the right tracking page in one click. Swap this for real deep
+// links per-carrier once a courier-aggregator API is integrated.
+export function getTrackingUrl(courierName, trackingId) {
+  const query = encodeURIComponent(`${courierName || 'courier'} tracking ${trackingId}`)
+  return `https://www.google.com/search?q=${query}`
+}

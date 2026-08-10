@@ -3,7 +3,11 @@ const options = [
   { id: 'cod', label: 'Cash on Delivery', desc: 'Pay when your order arrives' }
 ]
 
-export default function PaymentOptions({ selected, onSelect }) {
+// `codNote` (optional) is passed down by Checkout.jsx when
+// settings.codAdvancePercent > 0 — it explains the non-refundable
+// upfront advance required to confirm a COD order, right under the COD
+// option itself instead of somewhere easy to miss.
+export default function PaymentOptions({ selected, onSelect, codNote }) {
   return (
     <div className="flex flex-col gap-3">
       {options.map((opt) => (
@@ -23,6 +27,9 @@ export default function PaymentOptions({ selected, onSelect }) {
           <div>
             <p className="font-accent tracking-wide uppercase text-sm">{opt.label}</p>
             <p className="text-xs text-slate">{opt.desc}</p>
+            {opt.id === 'cod' && codNote && (
+              <p className="text-xs text-volt mt-1.5">{codNote}</p>
+            )}
           </div>
         </label>
       ))}

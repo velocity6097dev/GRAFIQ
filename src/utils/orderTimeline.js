@@ -76,3 +76,64 @@ export function formatTimelineDate(iso) {
     minute: '2-digit'
   })
 }
+
+// Admin-facing "Order Activity" timeline — shorter and ops-focused
+// compared to ORDER_TIMELINE_STEPS above. "Payment Confirmed" isn't an
+// order `status` at all (status_history only tracks order.status
+// transitions), so this is built from a mix of status_history entries,
+// the order's linked Razorpay payment record, and — for a plain COD
+// order that was never prepaid online — the Delivered timestamp as a
+// stand-in for "cash collected".
+export function buildAdminActivity(order) {
+  const history = Array.isArray(order?.statusHistory) ? order.statusHistory : []
+  const historyMap = new Map(history.map((h) => [h.status, h.at]))
+
+  const placedAt = order?.createdAt || null
+
+  let paymentConfirmedAt = null
+  if (order?.paymentStatus === 'paid' || order?.paymentStatus === 'partial') {
+    paymentConfirmedAt = order?.payment?.verifiedAt || order?.payment?.createdAt || placedAt
+  } else if (order?.paymentMethod === 'COD' && historyMap.has('Delivered')) {
+    paymentConfirmedAt = historyMap.get('Delivered')
+  }
+
+  const steps = [
+    { key: 'placed', label: 'Order Placed', at: placedAt, done: !!placedAt },
+    {
+      key: 'payment',
+      label: order?.paymentStatus === 'partial' ? 'Advance Paid' : 'Payment Confirmed',
+      at: paymentConfirmedAt,
+      done: !!paymentConfirmedAt
+    },
+    {
+      key: 'processing',
+      label: 'Processing',
+      at: historyMap.get('Processing') || null,
+      done: historyMap.has('Processing')
+    },
+    {
+      key: 'shipped',
+      label: 'Shipped',
+      at: historyMap.get('Shipped') || order?.shipping?.bookedAt || null,
+      done: historyMap.has('Shipped') || !!order?.shipping?.bookedAt
+    },
+    {
+      key: 'delivered',
+      label: 'Delivered',
+      at: historyMap.get('Delivered') || null,
+      done: historyMap.has('Delivered')
+    }
+  ]
+
+  // Once a later step is done, treat every earlier one as done too (an
+  // order that's Shipped was necessarily Processing at some point, even
+  // if that exact status transition was skipped/not recorded) — this
+  // only fills gaps forward, it never invents a timestamp for a step.
+  let sawDone = false
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i].done) sawDone = true
+    else if (sawDone) steps[i].done = true
+  }
+
+  return steps
+}
