@@ -18,8 +18,8 @@ import {
 } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
 import { api } from '../../api/client'
-import { formatPrice, generateTrackingId } from '../../utils/format'
-import { getShippingQuotes, getTrackingUrl } from '../../utils/shipping'
+import { formatPrice } from '../../utils/format'
+import { getTrackingUrl } from '../../utils/shipping'
 import { buildAdminActivity, formatTimelineDate } from '../../utils/orderTimeline'
 import { openInvoice } from '../../utils/invoice'
 import {
@@ -31,7 +31,6 @@ import {
   formatShippingPartnerForCopy,
   formatActivityForCopy
 } from '../../utils/orderCopyText'
-import shippingPartners from '../../data/shippingPartners'
 import Button from '../../components/ui/Button'
 import CircleLoader from '../../components/ui/CircleLoader'
 import Modal from '../../components/ui/Modal'
@@ -89,7 +88,11 @@ export default function OrderDetail() {
     updateOrderRefundStatus,
     updateOrderNotes,
     verifyOrderPayment,
-    refundOrderPayment
+    refundOrderPayment,
+    getShiprocketRates,
+    bookShiprocketCourier,
+    cancelShiprocketShipment,
+    trackShiprocketShipment
   } = useStore()
   const order = orders.find((o) => o.id === id)
   const linkedReplacements = replacements.filter((r) => r.orderId === id)
@@ -99,6 +102,18 @@ export default function OrderDetail() {
   const [showCompare, setShowCompare] = useState(!order?.shipping?.trackingId)
   const [bookingId, setBookingId] = useState(null)
   const [actionError, setActionError] = useState('')
+
+  // Live Shiprocket rate comparison — fetched on demand (opening the
+  // Compare Couriers panel) rather than eagerly on every order load,
+  // since unlike the old mock quotes this is a real paid-per-call API.
+  const [quotes, setQuotes] = useState([])
+  const [quotesLoading, setQuotesLoading] = useState(false)
+  const [quotesError, setQuotesError] = useState('')
+  const [quotesFetchedFor, setQuotesFetchedFor] = useState(null)
+  const [estimatedWeight, setEstimatedWeight] = useState(null)
+  const [tracking, setTracking] = useState(null)
+  const [trackingLoading, setTrackingLoading] = useState(false)
+  const [cancellingShipment, setCancellingShipment] = useState(false)
 
   const [notesInput, setNotesInput] = useState(order?.adminNotes || '')
   const [notesSaved, setNotesSaved] = useState(false)
@@ -125,11 +140,34 @@ export default function OrderDetail() {
     toastTimeoutRef.current = setTimeout(() => setToastVisible(false), 2000)
   }
 
-  const quotes = useMemo(
-    () => (order ? getShippingQuotes(order, shippingPartners) : []),
-    [order]
-  )
   const activity = useMemo(() => buildAdminActivity(order), [order])
+
+  // Fetches live courier rates from Shiprocket the first time the
+  // Compare Couriers panel opens for this order (and again if the admin
+  // hits Refresh Rates). Cached per order id in quotesFetchedFor so
+  // toggling the panel open/closed doesn't re-hit the API every time.
+  const loadQuotes = async () => {
+    if (!order) return
+    setQuotesLoading(true)
+    setQuotesError('')
+    try {
+      const { quotes: live, weight } = await getShiprocketRates(order.id)
+      setQuotes(live)
+      setEstimatedWeight(weight)
+      setQuotesFetchedFor(order.id)
+    } catch (err) {
+      setQuotesError(err.message || 'Could not fetch live courier rates.')
+    } finally {
+      setQuotesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showCompare && order && quotesFetchedFor !== order.id) {
+      loadQuotes()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCompare, order?.id])
 
   // Customer Security panel's Trust/Risk data — fetched per customer
   // phone from customer_trust.php (computed live from their order +
@@ -234,43 +272,63 @@ export default function OrderDetail() {
     }
   }
 
-  const handleTrackShipment = () => {
+  // Fetches Shiprocket's live shipment status + its own tracking-page
+  // URL and opens that URL — falling back to the generic Google-search
+  // lookup (getTrackingUrl) only if Shiprocket can't return one (e.g.
+  // right after booking, before it has scan data yet).
+  const handleTrackShipment = async () => {
     if (!order.shipping?.trackingId) return
-    const url = getTrackingUrl(order.shipping.courierName, order.shipping.trackingId)
-    window.open(url, '_blank', 'noopener,noreferrer')
+    setTrackingLoading(true)
+    setActionError('')
+    try {
+      const result = await trackShiprocketShipment(order.id)
+      setTracking(result)
+      const url = result.trackUrl || getTrackingUrl(order.shipping.courierName, order.shipping.trackingId)
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      setActionError(err.message || 'Could not fetch live tracking right now.')
+      // Still let the admin get *somewhere* useful even if Shiprocket's
+      // tracking call failed for some reason.
+      window.open(getTrackingUrl(order.shipping.courierName, order.shipping.trackingId), '_blank', 'noopener,noreferrer')
+    } finally {
+      setTrackingLoading(false)
+    }
   }
 
   const handlePrintInvoice = () => openInvoice(order, settings)
 
-  // NOTE: booking is simulated with a short delay and a generated tracking
-  // number. Wire this up to a real courier-aggregator API (Shiprocket,
-  // Shipway, Delhivery One, etc.) to actually create shipments —
-  // `getShippingQuotes` in utils/shipping.js is the one function to swap
-  // for a real rate-check call.
-  const handleBook = (quote) => {
-    setBookingId(quote.partner.id)
+  // Books (or, if this order already has a Shiprocket shipment, reassigns
+  // the AWB on that same shipment — a "Change Courier" rebook) a real
+  // Shiprocket shipment for the chosen quote. See
+  // grafiq-api/shiprocket_action.php for what actually happens with it.
+  const handleBook = async (quote) => {
+    setBookingId(quote.courierId)
     setActionError('')
-    setTimeout(async () => {
-      try {
-        const trackingId = generateTrackingId(quote.partner.id)
-        await updateOrderShipping(order.id, {
-          courierId: quote.partner.id,
-          courierName: quote.partner.name,
-          cost: quote.price,
-          trackingId,
-          bookedAt: new Date().toISOString()
-        })
-        if (['Pending', 'Confirmed', 'Processing'].includes(order.status)) {
-          await updateOrderStatus(order.id, 'Shipped')
-        }
-        setTrackingInput(trackingId)
-        setShowCompare(false)
-      } catch (err) {
-        setActionError(err.message || 'Could not book this courier.')
-      } finally {
-        setBookingId(null)
-      }
-    }, 900)
+    try {
+      const updated = await bookShiprocketCourier(order.id, {
+        courierId: quote.courierId,
+        rate: quote.rate,
+        etaDays: quote.etaDays
+      })
+      setTrackingInput(updated.shipping?.trackingId || '')
+      setShowCompare(false)
+    } catch (err) {
+      setActionError(err.message || 'Could not book this courier.')
+    } finally {
+      setBookingId(null)
+    }
+  }
+
+  const handleCancelShipment = async () => {
+    setCancellingShipment(true)
+    setActionError('')
+    try {
+      await cancelShiprocketShipment(order.id)
+    } catch (err) {
+      setActionError(err.message || 'Could not cancel this shipment.')
+    } finally {
+      setCancellingShipment(false)
+    }
   }
 
   // "Shipping Status" for the Shipping Partner card — order.status once a
@@ -698,7 +756,7 @@ export default function OrderDetail() {
                   getText={() => formatShippingPartnerForCopy(order, settings.currencySymbol, shippingStatusLabel)}
                   onCopied={showToast}
                 />
-                {order.shipping?.courierName && (
+                {order.shipping?.courierName && !order.shipping?.cancelled && (
                   <button
                     onClick={() => setShowCompare((v) => !v)}
                     className="flex items-center gap-1 text-xs text-slate hover:text-volt"
@@ -716,14 +774,20 @@ export default function OrderDetail() {
                   <p>{order.shipping.courierName}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate uppercase font-accent mb-1">Tracking Number</p>
+                  <p className="text-xs text-slate uppercase font-accent mb-1">AWB / Tracking Number</p>
                   <p className="font-mono text-xs">{order.shipping.trackingId || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate uppercase font-accent mb-1">Shipping Status</p>
-                  <p className={`font-accent uppercase text-xs ${statusTone[shippingStatusLabel] || 'text-volt'}`}>
-                    {shippingStatusLabel}
+                  <p className={`font-accent uppercase text-xs ${order.shipping?.cancelled ? 'text-red-400' : statusTone[shippingStatusLabel] || 'text-volt'}`}>
+                    {order.shipping?.cancelled ? 'Cancelled' : shippingStatusLabel}
                   </p>
+                  {tracking?.status && (
+                    <p className="text-xs text-slate mt-0.5">Latest scan: {tracking.status}</p>
+                  )}
+                  {!tracking?.status && order.shipping?.lastTrackedStatus && (
+                    <p className="text-xs text-slate mt-0.5">Latest scan: {order.shipping.lastTrackedStatus}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-slate uppercase font-accent mb-1">Booked</p>
@@ -733,13 +797,24 @@ export default function OrderDetail() {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-slate mb-4">No courier booked yet — compare rates below and book one.</p>
+              <p className="text-xs text-slate mb-4">No courier booked yet — compare live rates below and book one.</p>
             )}
 
             <div className="flex gap-2 mb-4 flex-wrap">
               {order.shipping?.trackingId && (
-                <Button size="md" variant="outline" onClick={handleTrackShipment} className="px-4 py-2 text-xs">
-                  <ExternalLink size={13} /> Track Shipment
+                <Button size="md" variant="outline" onClick={handleTrackShipment} disabled={trackingLoading} className="px-4 py-2 text-xs">
+                  <ExternalLink size={13} /> {trackingLoading ? 'Tracking…' : 'Track Shipment'}
+                </Button>
+              )}
+              {order.shipping?.courierName && !order.shipping?.cancelled && (
+                <Button
+                  size="md"
+                  variant="outline"
+                  onClick={handleCancelShipment}
+                  disabled={cancellingShipment}
+                  className="px-4 py-2 text-xs border-red-400/50 text-red-400 hover:border-red-400"
+                >
+                  {cancellingShipment ? 'Cancelling…' : 'Cancel Shipment'}
                 </Button>
               )}
               {!order.shipping?.courierName && (
@@ -754,41 +829,65 @@ export default function OrderDetail() {
 
             {showCompare && (
               <div className="flex flex-col gap-2">
-                {quotes.map((q) => (
+                {quotesLoading && (
+                  <div className="flex items-center gap-2 text-xs text-slate py-3">
+                    <CircleLoader size={16} /> Fetching live rates from Shiprocket…
+                  </div>
+                )}
+
+                {!quotesLoading && quotesError && (
+                  <div className="border border-red-400/40 p-3 text-xs text-red-400">
+                    <p>{quotesError}</p>
+                    <button onClick={loadQuotes} className="mt-2 flex items-center gap-1 text-paper hover:text-volt">
+                      <RefreshCw size={11} /> Try again
+                    </button>
+                  </div>
+                )}
+
+                {!quotesLoading && !quotesError && quotes.map((q) => (
                   <div
-                    key={q.partner.id}
+                    key={q.courierId}
                     className="flex items-center justify-between gap-3 border border-line p-3"
                   >
                     <div className="min-w-0">
-                      <p className="font-accent truncate">{q.partner.name}</p>
+                      <p className="font-accent truncate">{q.name}</p>
                       <div className="flex items-center gap-2 text-xs text-slate mt-0.5">
                         <span>{q.etaDays}</span>
-                        <span className="flex items-center gap-0.5">
-                          <Star size={11} className="fill-volt stroke-volt" /> {q.partner.rating}
-                        </span>
+                        {q.rating > 0 && (
+                          <span className="flex items-center gap-0.5">
+                            <Star size={11} className="fill-volt stroke-volt" /> {q.rating}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="font-accent text-volt">{formatPrice(q.price, settings.currencySymbol)}</span>
+                      <span className="font-accent text-volt">{formatPrice(q.rate, settings.currencySymbol)}</span>
                       <Button
                         size="md"
-                        variant={order.shipping?.courierId === q.partner.id ? 'dark' : 'primary'}
+                        variant={order.shipping?.courierId === q.courierId ? 'dark' : 'primary'}
                         onClick={() => handleBook(q)}
-                        disabled={bookingId === q.partner.id}
+                        disabled={bookingId === q.courierId}
                         className="px-4 py-2 text-xs"
                       >
-                        {bookingId === q.partner.id
+                        {bookingId === q.courierId
                           ? 'Booking…'
-                          : order.shipping?.courierId === q.partner.id
+                          : order.shipping?.courierId === q.courierId
                           ? 'Rebook'
                           : 'Book'}
                       </Button>
                     </div>
                   </div>
                 ))}
-                <p className="text-xs text-slate mt-1 flex items-center gap-1.5">
-                  <Truck size={12} /> Estimated parcel weight: {quotes[0]?.weight ?? '—'} kg (based on item count)
-                </p>
+                {!quotesLoading && !quotesError && (
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-slate flex items-center gap-1.5">
+                      <Truck size={12} /> Estimated parcel weight: {estimatedWeight ?? '—'} kg (based on item count)
+                    </p>
+                    <button onClick={loadQuotes} className="flex items-center gap-1 text-xs text-slate hover:text-volt">
+                      <RefreshCw size={11} /> Refresh Rates
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </section>

@@ -28,12 +28,145 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 // (no live/business verification needed to test — test mode works
 // immediately after signup). Paste them here. Never put the key SECRET
 // in any frontend file — it only belongs here, server-side.
-const RAZORPAY_KEY_ID = 'rzp_test_XXXXXXXXXXXXXX';
-const RAZORPAY_KEY_SECRET = 'YOUR_TEST_KEY_SECRET_HERE';
+const RAZORPAY_KEY_ID = 'rzp_test_TNio3b4zJVjtb5';
+const RAZORPAY_KEY_SECRET = 'ov5LKpV0eLPOdCeTJi3qd1AW';
 // Optional: set this up under Settings → Webhooks in the Razorpay
 // dashboard if you deploy publicly (see grafiq-api/razorpay_webhook.php).
 // Not needed for local XAMPP testing — the queue worker covers that case.
 const RAZORPAY_WEBHOOK_SECRET = '';
+
+// ---------- Shiprocket ----------
+// Create a dedicated API user under Shiprocket Panel → Settings → API →
+// "Add New API User" (do NOT use your normal Shiprocket login here) and
+// paste its email/password below. See SHIPROCKET_SETUP.md for the full
+// walkthrough, including where to find the two values below it.
+const SHIPROCKET_EMAIL = 'velocity6097.dev@gmail.com';
+const SHIPROCKET_PASSWORD = '*tT$xTm49sxv9P3GegbPqXF1d*2c4BPy';
+// Exactly as it appears under Settings → Pickup Addresses in your
+// Shiprocket dashboard — the address's "Nickname", not the address text.
+const SHIPROCKET_PICKUP_LOCATION = 'Primary';
+// That same pickup address's 6-digit pincode. Kept separate from the
+// nickname above because the rate-check API needs an actual postcode,
+// not a name.
+const SHIPROCKET_PICKUP_PINCODE = '743165';
+// Rough parcel dimensions in cm used when booking a shipment — there's no
+// per-product dimension/weight data in this store yet, so every order
+// books with the same box size. Tune these to whatever a typical GRAFIQ
+// order looks like once packed; weight itself is still estimated per
+// order from item count (see estimate_weight_kg() below).
+const SHIPROCKET_DEFAULT_LENGTH = 15;
+const SHIPROCKET_DEFAULT_BREADTH = 12;
+const SHIPROCKET_DEFAULT_HEIGHT = 3;
+
+const SHIPROCKET_BASE = 'https://apiv2.shiprocket.in/v1/external';
+
+function shiprocket_configured(): bool
+{
+    return SHIPROCKET_EMAIL !== 'YOUR_SHIPROCKET_API_USER_EMAIL'
+        && SHIPROCKET_PASSWORD !== 'YOUR_SHIPROCKET_API_USER_PASSWORD'
+        && SHIPROCKET_PICKUP_PINCODE !== '000000';
+}
+
+/**
+ * Mirrors estimateWeightKg() in src/utils/shipping.js so the live
+ * Shiprocket rate-check and the (now-retired) mock quotes were always
+ * estimating weight the same way. Rough model: 0.3kg per item, floored
+ * at 0.5kg for a single small item.
+ */
+function estimate_weight_kg(array $order): float
+{
+    $items = decode_json_column($order['items'] ?? null, []);
+    $totalQty = array_reduce($items, fn($sum, $i) => $sum + (int) ($i['qty'] ?? 0), 0) ?: 1;
+    return max(0.5, round($totalQty * 0.3, 1));
+}
+
+/**
+ * Returns a valid bearer token for the Shiprocket API. Tokens are valid
+ * 240 hours (10 days) per Shiprocket's docs — cached in the single-row
+ * `shiprocket_auth` table (same singleton-row pattern as `settings`) so
+ * every request doesn't re-authenticate, and refreshed a bit early (230h)
+ * to leave a safety margin. Throws RuntimeException on failure.
+ */
+function shiprocket_get_token(PDO $pdo): string
+{
+    $row = $pdo->query('SELECT token, expires_at FROM shiprocket_auth WHERE id = 1')->fetch();
+    if ($row && !empty($row['token']) && strtotime($row['expires_at']) > time() + 3600) {
+        return $row['token'];
+    }
+
+    $ch = curl_init(SHIPROCKET_BASE . '/auth/login');
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => 'POST',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => json_encode(['email' => SHIPROCKET_EMAIL, 'password' => SHIPROCKET_PASSWORD]),
+        CURLOPT_TIMEOUT        => 15,
+    ]);
+    $response = curl_exec($ch);
+    if ($response === false) {
+        $error = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException("Could not reach Shiprocket: $error");
+    }
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $body = json_decode($response, true);
+
+    if ($status < 200 || $status >= 300 || empty($body['token'])) {
+        $message = $body['message'] ?? 'Shiprocket rejected the login — double check the API user email/password in config.php.';
+        throw new RuntimeException($message);
+    }
+
+    $expiresAt = (new DateTime('+230 hours'))->format('Y-m-d H:i:s');
+    $pdo->prepare(
+        'INSERT INTO shiprocket_auth (id, token, expires_at) VALUES (1, ?, ?)
+         ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)'
+    )->execute([$body['token'], $expiresAt]);
+
+    return $body['token'];
+}
+
+/**
+ * Calls Shiprocket's REST API (https://apiv2.shiprocket.in/v1/external/...)
+ * with a cached bearer token — same shape as razorpay_request() above.
+ * Automatically clears the cached token and retries once on a 401 (covers
+ * the token having been invalidated on Shiprocket's side before our own
+ * 230h cache expiry). Returns [httpStatusCode, decodedJsonBody].
+ */
+function shiprocket_request(PDO $pdo, string $method, string $path, ?array $body = null, ?array $query = null, bool $allowRetry = true): array
+{
+    $token = shiprocket_get_token($pdo);
+    $url = SHIPROCKET_BASE . $path;
+    if ($query) $url .= '?' . http_build_query($query);
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => $method,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', "Authorization: Bearer $token"],
+        CURLOPT_TIMEOUT        => 25,
+    ]);
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+    }
+
+    $response = curl_exec($ch);
+    if ($response === false) {
+        $error = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException("Could not reach Shiprocket: $error");
+    }
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $decoded = json_decode($response, true);
+
+    if ($status === 401 && $allowRetry) {
+        $pdo->prepare('DELETE FROM shiprocket_auth WHERE id = 1')->execute();
+        return shiprocket_request($pdo, $method, $path, $body, $query, false);
+    }
+
+    return [$status, is_array($decoded) ? $decoded : []];
+}
 
 // ---------- Database connection ----------
 const DB_HOST = 'localhost';

@@ -127,11 +127,12 @@ marked with `TODO(production)` comments in the code:
    (Razorpay, Stripe, Cashfree) and only create the order after the
    gateway confirms payment via a server-side webhook.
 
-3. **Shipping partner rates** (`src/utils/shipping.js`, `src/data/shippingPartners.js`) —
-   quotes are computed from a simple weight/zone formula, not real courier
-   APIs. Swap `getShippingQuotes` for a real aggregator's rate-check
-   endpoint (Shiprocket, Shipway, Delhivery One, Pickrr, etc.) to book
-   actual shipments instead of generating a mock tracking ID.
+3. ~~**Shipping partner rates**~~ — **no longer mocked.** The admin order
+   page's Shipping Partner card (`src/pages/admin/OrderDetail.jsx`) now
+   calls the real Shiprocket API (`grafiq-api/shiprocket_action.php`) for
+   live rate comparison, booking, tracking, and cancellation. See
+   [`SHIPROCKET_SETUP.md`](./SHIPROCKET_SETUP.md) to configure your
+   Shiprocket credentials.
 
 You'll also want a real backend/database once you're ready to go beyond a
 single browser's localStorage — at that point, `StoreContext.jsx` is the

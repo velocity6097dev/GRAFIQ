@@ -23,7 +23,7 @@ DROP TABLE IF EXISTS banners;
 DROP TABLE IF EXISTS settings;
 DROP TABLE IF EXISTS admin_users;
 DROP TABLE IF EXISTS customers;
-DROP TABLE IF EXISTS shipping_partners;
+DROP TABLE IF EXISTS shiprocket_auth;
 
 CREATE TABLE categories (
   id          VARCHAR(60) PRIMARY KEY,
@@ -174,13 +174,15 @@ CREATE TABLE payments (
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE shipping_partners (
-  id          VARCHAR(60) PRIMARY KEY,
-  name        VARCHAR(150),
-  eta_days    VARCHAR(50),
-  base_rate   DECIMAL(10,2),
-  per_kg_rate DECIMAL(10,2),
-  rating      DECIMAL(2,1)
+-- Single-row cache of the Shiprocket API bearer token (see
+-- shiprocket_get_token() in config.php) — same singleton pattern as
+-- `settings`. Everything else the Shiprocket integration needs (booked
+-- courier, AWB/tracking number, Shiprocket's own order/shipment ids)
+-- lives inside the existing orders.shipping JSON column above.
+CREATE TABLE shiprocket_auth (
+  id         INT PRIMARY KEY DEFAULT 1,
+  token      TEXT,
+  expires_at DATETIME
 ) ENGINE=InnoDB;
 
 -- One row per "request a replacement" submission. Independent status
@@ -273,14 +275,6 @@ INSERT INTO settings (id, store_name, tagline, ticker_text, currency_symbol, del
     JSON_OBJECT('id','f3','icon','user','title','Made For You','desc','Your style. Your statement.'),
     JSON_OBJECT('id','f4','icon','truck','title','Fast & Safe Delivery','desc','Quick by us. Safe for you.')
   ));
-
-INSERT INTO shipping_partners (id, name, eta_days, base_rate, per_kg_rate, rating) VALUES
-('delhivery', 'Delhivery', '2–4 days', 40, 25, 4.3),
-('bluedart', 'Blue Dart', '1–3 days', 60, 35, 4.6),
-('dtdc', 'DTDC', '3–5 days', 35, 20, 4.0),
-('xpressbees', 'Xpressbees', '2–5 days', 38, 22, 4.1),
-('ecomexpress', 'Ecom Express', '3–6 days', 32, 18, 3.9),
-('shadowfax', 'Shadowfax', '1–2 days', 55, 30, 4.4);
 
 -- Demo admin login: username "admin", password "admin123"
 -- (bcrypt hash below is that password — change it after your first login

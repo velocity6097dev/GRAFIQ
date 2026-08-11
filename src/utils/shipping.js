@@ -1,9 +1,12 @@
-// Rough mock pricing model: estimate a parcel's weight from item count,
-// apply a destination "zone" multiplier derived from the pincode, and
-// price every partner off the same inputs so the quotes are genuinely
-// comparable. Replace with a real courier-aggregator rate-check API for
-// production use — this only exists so the admin can compare something
-// without wiring up real shipping accounts first.
+// getShippingQuotes()/estimateWeightKg()/getZoneMultiplier() below were the
+// mock rate model the admin order page used before it was wired up to the
+// real Shiprocket API (see grafiq-api/shiprocket_action.php and
+// SHIPROCKET_SETUP.md) — OrderDetail.jsx no longer calls getShippingQuotes.
+// Left here (a) as a reference/fallback if you ever swap in a different
+// courier aggregator and want a quick local sanity-check model again, and
+// (b) because getTrackingUrl() below is still actively used, as the
+// fallback when Shiprocket's own tracking URL isn't available yet (e.g.
+// right after booking, before it has scan data).
 
 export function estimateWeightKg(order) {
   const totalQty = order?.items?.reduce((sum, i) => sum + i.qty, 0) || 1
@@ -29,12 +32,11 @@ export function getShippingQuotes(order, partners) {
     .sort((a, b) => a.price - b.price)
 }
 
-// Opens a tracking lookup for a booked shipment. There's no real courier
-// API wired up yet (see the note above), so rather than guess at a
-// specific carrier's deep-link URL format (and risk sending the admin to
-// a broken page), this points at a prefilled search that reliably lands
-// on the right tracking page in one click. Swap this for real deep
-// links per-carrier once a courier-aggregator API is integrated.
+// Opens a tracking lookup for a booked shipment. Used as a fallback when
+// Shiprocket's own track_url isn't available (see handleTrackShipment in
+// OrderDetail.jsx) — rather than guess at a specific carrier's deep-link
+// URL format and risk a broken page, this points at a prefilled search
+// that reliably lands on the right tracking page in one click.
 export function getTrackingUrl(courierName, trackingId) {
   const query = encodeURIComponent(`${courierName || 'courier'} tracking ${trackingId}`)
   return `https://www.google.com/search?q=${query}`

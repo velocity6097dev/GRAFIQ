@@ -16,7 +16,7 @@ send_json([
         'GET/POST/PUT/DELETE /banners.php',
         'GET/PUT /settings.php',
         'GET/POST/PUT /orders.php',
-        'GET /shipping_partners.php',
+        'POST /shiprocket_action.php',
         'POST /admin_auth.php',
         'POST /customer_auth.php',
     ],

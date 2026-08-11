@@ -264,6 +264,37 @@ export function StoreProvider({ children }) {
     return updated
   }
 
+  // Admin-only: books (or, if this order already has a Shiprocket
+  // shipment, reassigns the AWB on that same shipment to a different
+  // courier — a "Change Courier" rebook) a real Shiprocket shipment.
+  // `payload` is { courierId, rate, etaDays } from whichever quote the
+  // admin picked in the Compare Couriers list (see getShiprocketRates
+  // below) — see grafiq-api/shiprocket_action.php for what actually
+  // happens with it.
+  const bookShiprocketCourier = async (orderId, payload) => {
+    const updated = await api.post('/shiprocket_action.php', { orderId, action: 'book', ...payload })
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)))
+    return updated
+  }
+
+  // Admin-only: cancels the Shiprocket order/shipment linked to this
+  // order (does not touch the order's own status — that's a separate,
+  // deliberate choice from the status dropdown).
+  const cancelShiprocketShipment = async (orderId) => {
+    const updated = await api.post('/shiprocket_action.php', { orderId, action: 'cancel' })
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)))
+    return updated
+  }
+
+  // Live courier rate comparison for one order — read-only, doesn't touch
+  // order state, so it's not wrapped in a setOrders update like the
+  // actions above. Returns { quotes, weight }.
+  const getShiprocketRates = (orderId) => api.post('/shiprocket_action.php', { orderId, action: 'rates' })
+
+  // Live shipment status + Shiprocket's own tracking page URL for one
+  // order. Returns { status, trackUrl }.
+  const trackShiprocketShipment = (orderId) => api.post('/shiprocket_action.php', { orderId, action: 'track' })
+
   // ---------- Replacements ----------
   const requestReplacement = async (payload) => {
     const created = await api.post('/replacements.php', payload)
@@ -306,6 +337,10 @@ export function StoreProvider({ children }) {
       runPaymentQueue,
       updateOrderStatus,
       updateOrderShipping,
+      bookShiprocketCourier,
+      cancelShiprocketShipment,
+      getShiprocketRates,
+      trackShiprocketShipment,
       cancelOrder,
       updateOrderRefundStatus,
       updateOrderNotes,
