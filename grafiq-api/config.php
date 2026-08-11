@@ -141,6 +141,24 @@ function razorpay_configured(): bool
 }
 
 /**
+ * Best-effort client IP, logged on order creation (orders.customer_ip)
+ * for the admin order page's Customer Security panel. NOT suitable for
+ * access-control/fraud decisions on its own — X-Forwarded-For is
+ * trivially spoofable by the client sending the request — it's only
+ * ever used here for an admin's own visual review of an order.
+ */
+function client_ip(): ?string
+{
+    $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
+    if ($forwarded) {
+        // First entry in a comma-separated chain is the original client.
+        $ip = trim(explode(',', $forwarded)[0]);
+        if ($ip !== '') return $ip;
+    }
+    return $_SERVER['REMOTE_ADDR'] ?? null;
+}
+
+/**
  * Base SELECT for `orders`, left-joined to its most recent `payments` row
  * (correlated subquery picks the latest by created_at). Every endpoint
  * that returns order(s) — orders.php, razorpay_verify.php,
@@ -155,11 +173,13 @@ function order_select_sql(string $where = ''): string
                 lp.amount              AS p_amount,
                 lp.status              AS p_status,
                 lp.verified_at         AS p_verified_at,
-                lp.created_at          AS p_payment_created_at
+                lp.created_at          AS p_payment_created_at,
+                cu.id                  AS cu_customer_id
             FROM orders o
             LEFT JOIN payments lp ON lp.id = (
                 SELECT p2.id FROM payments p2 WHERE p2.order_id = o.id ORDER BY p2.created_at DESC LIMIT 1
             )
+            LEFT JOIN customers cu ON cu.phone = o.customer_phone
             $where";
 }
 
@@ -197,6 +217,13 @@ function row_to_order(array $r): array
         'id'                 => $r['id'],
         'customerPhone'      => $r['customer_phone'],
         'customerEmail'      => $r['customer_email'] ?? null,
+        // Joined from `customers` by phone (see order_select_sql) — the
+        // stable customer record id, distinct from this order's own id.
+        'customerId'         => $r['cu_customer_id'] ?? null,
+        // IP address the order was placed from (see client_ip()) —
+        // shown in the admin order page's Customer Security panel.
+        // NULL for any order placed before this column existed.
+        'customerIp'         => $r['customer_ip'] ?? null,
         'status'             => $r['status'],
         'statusHistory'      => decode_json_column($r['status_history']),
         'items'              => decode_json_column($r['items']),

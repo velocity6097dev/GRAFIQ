@@ -109,6 +109,10 @@ CREATE TABLE orders (
   -- the admin order page's Customer section; nothing in the app requires
   -- it (OTP login only ever needed the phone number).
   customer_email       VARCHAR(150) NULL,
+  -- IP address the order was placed from (see client_ip() in config.php)
+  -- — shown in the admin order page's Customer Security panel. Informal
+  -- signal only, not used for any access-control decision.
+  customer_ip          VARCHAR(45) NULL,
   status               VARCHAR(30) NOT NULL DEFAULT 'Pending',
   -- JSON array of {status, at} entries — one appended every time `status`
   -- changes (see orders.php). This is what powers the customer-facing

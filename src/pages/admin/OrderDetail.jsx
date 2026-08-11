@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -10,18 +10,33 @@ import {
   Save,
   User,
   ShieldCheck,
+  ShieldAlert,
+  ShieldX,
   RotateCcw,
   FileText,
   ExternalLink
 } from 'lucide-react'
 import { useStore } from '../../context/StoreContext'
+import { api } from '../../api/client'
 import { formatPrice, generateTrackingId } from '../../utils/format'
 import { getShippingQuotes, getTrackingUrl } from '../../utils/shipping'
 import { buildAdminActivity, formatTimelineDate } from '../../utils/orderTimeline'
 import { openInvoice } from '../../utils/invoice'
+import {
+  formatAddressForCopy,
+  formatCustomerForCopy,
+  formatItemsForCopy,
+  formatPaymentForCopy,
+  formatTrackingForCopy,
+  formatShippingPartnerForCopy,
+  formatActivityForCopy
+} from '../../utils/orderCopyText'
 import shippingPartners from '../../data/shippingPartners'
 import Button from '../../components/ui/Button'
 import CircleLoader from '../../components/ui/CircleLoader'
+import Modal from '../../components/ui/Modal'
+import CopyButton from '../../components/ui/CopyButton'
+import Toast from '../../components/ui/Toast'
 
 const STATUSES = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled']
 
@@ -41,6 +56,25 @@ const paymentStatusTone = {
   partial: 'text-amber-400',
   unpaid: 'text-slate',
   failed: 'text-red-400'
+}
+
+// Trust/Risk states for the Customer Security panel. #39FF14 is a
+// specific brand green requested for GOOD — outside the theme's usual
+// `volt` accent — so it's applied as an arbitrary Tailwind value rather
+// than added as a new named color just for this one badge.
+const trustTone = {
+  GOOD: { label: 'GOOD', color: 'text-[#39FF14]', Icon: ShieldCheck },
+  MEDIUM_RISK: { label: 'MEDIUM RISK', color: 'text-yellow-400', Icon: ShieldAlert },
+  RISKY: { label: 'RISKY', color: 'text-red-400', Icon: ShieldX }
+}
+
+function TrustRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-slate">{label}</span>
+      <span className="font-accent">{value}</span>
+    </div>
+  )
 }
 
 export default function OrderDetail() {
@@ -75,11 +109,52 @@ export default function OrderDetail() {
   const [refundAmount, setRefundAmount] = useState('')
   const [refunding, setRefunding] = useState(false)
 
+  const [trust, setTrust] = useState(null)
+  const [trustLoading, setTrustLoading] = useState(false)
+  const [trustError, setTrustError] = useState('')
+  const [showTrustModal, setShowTrustModal] = useState(false)
+
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastVisible, setToastVisible] = useState(false)
+  const toastTimeoutRef = useRef(null)
+
+  const showToast = (message = 'Copied to clipboard!') => {
+    setToastMessage(message)
+    setToastVisible(true)
+    clearTimeout(toastTimeoutRef.current)
+    toastTimeoutRef.current = setTimeout(() => setToastVisible(false), 2000)
+  }
+
   const quotes = useMemo(
     () => (order ? getShippingQuotes(order, shippingPartners) : []),
     [order]
   )
   const activity = useMemo(() => buildAdminActivity(order), [order])
+
+  // Customer Security panel's Trust/Risk data — fetched per customer
+  // phone from customer_trust.php (computed live from their order +
+  // replacement history, see that file for the scoring heuristic).
+  useEffect(() => {
+    const phone = order?.customerPhone || order?.address?.phone
+    if (!phone) return
+    let cancelled = false
+    setTrustLoading(true)
+    setTrustError('')
+    api
+      .get(`/customer_trust.php?phone=${encodeURIComponent(phone)}`)
+      .then((data) => {
+        if (!cancelled) setTrust(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setTrustError(err.message || 'Could not load this customer\'s trust profile.')
+      })
+      .finally(() => {
+        if (!cancelled) setTrustLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [order?.customerPhone, order?.address?.phone])
 
   if (!order) {
     if (loading) {
@@ -244,7 +319,10 @@ export default function OrderDetail() {
         {/* Left: address, customer, items, payment, notes */}
         <div className="flex flex-col gap-8">
           <section className="border border-line p-5">
-            <p className="font-accent uppercase tracking-wide text-volt mb-4">Shipping Address</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-accent uppercase tracking-wide text-volt">Shipping Address</p>
+              <CopyButton getText={() => formatAddressForCopy(order)} onCopied={showToast} />
+            </div>
             <p className="font-accent">{order.address?.name}</p>
             <p className="text-slate text-sm mt-1">{order.address?.line1}</p>
             <p className="text-slate text-sm">
@@ -253,17 +331,68 @@ export default function OrderDetail() {
             <p className="text-slate text-sm mt-1">+91 {order.address?.phone}</p>
           </section>
 
-          <section className="border border-line p-5">
-            <p className="font-accent uppercase tracking-wide text-volt mb-4 flex items-center gap-2">
-              <User size={14} /> Customer
-            </p>
-            <p className="font-accent">{order.address?.name || '—'}</p>
-            <p className="text-slate text-sm mt-1">+91 {order.customerPhone || order.address?.phone || '—'}</p>
-            <p className="text-slate text-sm mt-1">{order.customerEmail || 'No email provided'}</p>
-          </section>
+          <div className="grid sm:grid-cols-2 gap-8">
+            <section className="border border-line p-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="font-accent uppercase tracking-wide text-volt flex items-center gap-2">
+                  <User size={14} /> Customer
+                </p>
+                <CopyButton getText={() => formatCustomerForCopy(order)} onCopied={showToast} />
+              </div>
+              <p className="font-accent">{order.address?.name || '—'}</p>
+              <p className="text-slate text-sm mt-1">+91 {order.customerPhone || order.address?.phone || '—'}</p>
+              <p className="text-slate text-sm mt-1">{order.customerEmail || 'No email provided'}</p>
+            </section>
+
+            <section className="border border-line p-5">
+              <p className="font-accent uppercase tracking-wide text-volt mb-4">Customer Security</p>
+
+              {trustLoading ? (
+                <p className="text-xs text-slate">Loading trust profile…</p>
+              ) : trustError ? (
+                <p className="text-xs text-red-400">{trustError}</p>
+              ) : trust ? (
+                (() => {
+                  const { label, color, Icon } = trustTone[trust.trustLevel] || trustTone.MEDIUM_RISK
+                  return (
+                    <button
+                      onClick={() => setShowTrustModal(true)}
+                      className="flex items-center gap-2 group"
+                      aria-label="View customer trust details"
+                    >
+                      <Icon size={20} className={`${color} shrink-0`} />
+                      <span className={`font-accent uppercase text-sm tracking-wide ${color} group-hover:underline`}>
+                        {label}
+                      </span>
+                    </button>
+                  )
+                })()
+              ) : (
+                <p className="text-xs text-slate">—</p>
+              )}
+
+              <div className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-line">
+                <div className="min-w-0">
+                  <p className="text-xs text-slate uppercase font-accent mb-1">IP Address</p>
+                  <p className="text-sm font-mono truncate">{order.customerIp || 'Not recorded'}</p>
+                </div>
+                {order.customerIp && (
+                  <CopyButton
+                    iconOnly
+                    label="Copy IP Address"
+                    getText={() => order.customerIp}
+                    onCopied={showToast}
+                  />
+                )}
+              </div>
+            </section>
+          </div>
 
           <section className="border border-line p-5">
-            <p className="font-accent uppercase tracking-wide text-volt mb-4">Items</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-accent uppercase tracking-wide text-volt">Items</p>
+              <CopyButton getText={() => formatItemsForCopy(order, settings.currencySymbol)} onCopied={showToast} />
+            </div>
             <div className="flex flex-col gap-3">
               {order.items?.map((item) => (
                 <div key={item.lineId} className="flex gap-3 items-center border-b border-line last:border-0 pb-3 last:pb-0">
@@ -303,15 +432,18 @@ export default function OrderDetail() {
           <section className="border border-line p-5">
             <div className="flex items-center justify-between mb-4">
               <p className="font-accent uppercase tracking-wide text-volt">Payment</p>
-              {order.payment?.razorpayPaymentId && (
-                <button
-                  onClick={handleVerifyPayment}
-                  disabled={verifying}
-                  className="flex items-center gap-1 text-xs text-slate hover:text-volt disabled:opacity-50"
-                >
-                  <ShieldCheck size={12} /> {verifying ? 'Verifying…' : 'Verify Payment'}
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                <CopyButton getText={() => formatPaymentForCopy(order, settings.currencySymbol)} onCopied={showToast} />
+                {order.payment?.razorpayPaymentId && (
+                  <button
+                    onClick={handleVerifyPayment}
+                    disabled={verifying}
+                    className="flex items-center gap-1 text-xs text-slate hover:text-volt disabled:opacity-50"
+                  >
+                    <ShieldCheck size={12} /> {verifying ? 'Verifying…' : 'Verify Payment'}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -466,7 +598,10 @@ export default function OrderDetail() {
         {/* Right: activity, tracking, replacements, shipping partner */}
         <div className="flex flex-col gap-6">
           <section className="border border-line p-5">
-            <p className="font-accent uppercase tracking-wide text-volt mb-4">Order Activity</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-accent uppercase tracking-wide text-volt">Order Activity</p>
+              <CopyButton getText={() => formatActivityForCopy(activity)} onCopied={showToast} />
+            </div>
             <div className="flex flex-col">
               {activity.map((step, i) => (
                 <div key={step.key} className="flex gap-3">
@@ -490,7 +625,10 @@ export default function OrderDetail() {
           </section>
 
           <section className="border border-line p-5">
-            <p className="font-accent uppercase tracking-wide text-volt mb-4">Tracking ID</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-accent uppercase tracking-wide text-volt">Tracking ID</p>
+              <CopyButton getText={() => formatTrackingForCopy(order)} onCopied={showToast} />
+            </div>
             <div className="flex gap-2">
               <input
                 value={trackingInput}
@@ -555,14 +693,20 @@ export default function OrderDetail() {
           <section className="border border-line p-5">
             <div className="flex items-center justify-between mb-4">
               <p className="font-accent uppercase tracking-wide text-volt">Shipping Partner</p>
-              {order.shipping?.courierName && (
-                <button
-                  onClick={() => setShowCompare((v) => !v)}
-                  className="flex items-center gap-1 text-xs text-slate hover:text-volt"
-                >
-                  <RefreshCw size={12} /> {showCompare ? 'Hide' : 'Change Courier'}
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                <CopyButton
+                  getText={() => formatShippingPartnerForCopy(order, settings.currencySymbol, shippingStatusLabel)}
+                  onCopied={showToast}
+                />
+                {order.shipping?.courierName && (
+                  <button
+                    onClick={() => setShowCompare((v) => !v)}
+                    className="flex items-center gap-1 text-xs text-slate hover:text-volt"
+                  >
+                    <RefreshCw size={12} /> {showCompare ? 'Hide' : 'Change Courier'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {order.shipping?.courierName ? (
@@ -650,6 +794,38 @@ export default function OrderDetail() {
           </section>
         </div>
       </div>
+
+      <Modal
+        open={showTrustModal}
+        onClose={() => setShowTrustModal(false)}
+        title="Customer Trust Details"
+        maxWidth="max-w-sm"
+      >
+        {trust && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 pb-3 border-b border-line">
+              {(() => {
+                const { label, color, Icon } = trustTone[trust.trustLevel] || trustTone.MEDIUM_RISK
+                return (
+                  <>
+                    <Icon size={22} className={color} />
+                    <span className={`font-accent uppercase tracking-wide ${color}`}>{label}</span>
+                  </>
+                )
+              })()}
+            </div>
+            <TrustRow label="Total Orders" value={trust.totalOrders} />
+            <TrustRow label="Cancelled Orders" value={trust.cancelledOrders} />
+            <TrustRow label="Returned Orders" value={trust.returnedOrders} />
+            <TrustRow label="Replacement Requests" value={trust.replacementRequests} />
+            <TrustRow label="Failed Orders" value={trust.failedOrders} />
+            <TrustRow label="Trust Score" value={`${trust.trustScore} / 100`} />
+            <TrustRow label="Last Updated" value={trust.lastUpdated ? formatTimelineDate(trust.lastUpdated) : '—'} />
+          </div>
+        )}
+      </Modal>
+
+      <Toast message={toastMessage} visible={toastVisible} />
     </div>
   )
 }

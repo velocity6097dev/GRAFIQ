@@ -79,12 +79,13 @@ $email = $orderData['customerEmail'] ?? ($orderData['address']['email'] ?? null)
 $pdo->beginTransaction();
 try {
     $pdo->prepare(
-        'INSERT INTO orders (id, customer_phone, customer_email, status, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, advance_amount, advance_paid, shipping)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+        'INSERT INTO orders (id, customer_phone, customer_email, customer_ip, status, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, advance_amount, advance_paid, shipping)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
     )->execute([
         $newOrderId,
         $orderData['customerPhone'] ?? null,
         $email ?: null,
+        client_ip(),
         'Pending',
         json_encode($orderData['items']),
         json_encode($orderData['address'] ?? []),

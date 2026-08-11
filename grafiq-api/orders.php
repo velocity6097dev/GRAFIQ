@@ -30,12 +30,13 @@ switch ($method) {
         $email = $data['customerEmail'] ?? ($data['address']['email'] ?? null);
 
         $pdo->prepare(
-            'INSERT INTO orders (id, customer_phone, customer_email, status, status_history, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, advance_amount, advance_paid, shipping)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO orders (id, customer_phone, customer_email, customer_ip, status, status_history, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, advance_amount, advance_paid, shipping)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         )->execute([
             $newId,
             $data['customerPhone'] ?? null,
             $email ?: null,
+            client_ip(),
             'Pending',
             json_encode($initialHistory),
             json_encode($data['items']),

@@ -130,6 +130,9 @@ the whole `schema.sql` (which would wipe your data):
 3. `grafiq-api/schema/migration/migration_admin_order_page.sql` — customer
    email + admin notes on the order page, and partial-COD (advance
    amount tracking + the `codAdvancePercent` setting)
+4. `grafiq-api/schema/migration/migration_customer_security.sql` — the
+   Customer Security panel's IP Address field (Trust/Risk itself needs
+   no new table — it's computed live from your existing data)
 
 ## Next steps (not done yet, happy to build these on request)
 - A real SMS gateway for OTP (currently a demo code, `1234`, for every
