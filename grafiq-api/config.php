@@ -28,8 +28,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 // (no live/business verification needed to test — test mode works
 // immediately after signup). Paste them here. Never put the key SECRET
 // in any frontend file — it only belongs here, server-side.
-const RAZORPAY_KEY_ID = 'rzp_test_TNio3b4zJVjtb5';
-const RAZORPAY_KEY_SECRET = 'ov5LKpV0eLPOdCeTJi3qd1AW';
+const RAZORPAY_KEY_ID = 'rzp_test_XXXXXXXXXXXXXX';
+const RAZORPAY_KEY_SECRET = 'YOUR_TEST_KEY_SECRET_HERE';
 // Optional: set this up under Settings → Webhooks in the Razorpay
 // dashboard if you deploy publicly (see grafiq-api/razorpay_webhook.php).
 // Not needed for local XAMPP testing — the queue worker covers that case.
@@ -40,8 +40,8 @@ const RAZORPAY_WEBHOOK_SECRET = '';
 // "Add New API User" (do NOT use your normal Shiprocket login here) and
 // paste its email/password below. See SHIPROCKET_SETUP.md for the full
 // walkthrough, including where to find the two values below it.
-const SHIPROCKET_EMAIL = 'velocity6097.dev@gmail.com';
-const SHIPROCKET_PASSWORD = '*tT$xTm49sxv9P3GegbPqXF1d*2c4BPy';
+const SHIPROCKET_EMAIL = 'email';
+const SHIPROCKET_PASSWORD = 'api pass';
 // Exactly as it appears under Settings → Pickup Addresses in your
 // Shiprocket dashboard — the address's "Nickname", not the address text.
 const SHIPROCKET_PICKUP_LOCATION = 'Primary';
