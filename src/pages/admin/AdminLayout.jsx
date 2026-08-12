@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useStore } from '../../context/StoreContext'
+import CircleLoader from '../../components/ui/CircleLoader'
 import logo from '../../assets/logo.png'
 
 const links = [
@@ -25,8 +26,21 @@ const links = [
 ]
 
 export default function AdminLayout() {
-  const { isAdmin, adminLogout } = useAuth()
+  const { isAdmin, adminAuthChecked, adminLogout } = useAuth()
   const { dbStatus, dbError } = useStore()
+
+  // Holds off rendering the admin shell (or bouncing to /login) until a
+  // stored token has actually been confirmed valid server-side — see
+  // AuthContext's startup check. Without this, a stale/expired token
+  // would flash the full dashboard for a moment before the check caught
+  // up and logged them out.
+  if (isAdmin && !adminAuthChecked) {
+    return (
+      <div className="min-h-screen bg-ink flex items-center justify-center">
+        <CircleLoader size={64} />
+      </div>
+    )
+  }
 
   if (!isAdmin) return <Navigate to="/admin/login" replace />
 

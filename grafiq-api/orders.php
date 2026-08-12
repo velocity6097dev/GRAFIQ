@@ -8,15 +8,65 @@ switch ($method) {
     case 'GET':
         if ($id) {
             $row = fetch_order_row($pdo, $id);
-            send_json($row ? row_to_order($row) : null);
+            if (!$row) send_json(null);
+
+            // Either a signed-in admin (sees any order) or the signed-in
+            // customer this order actually belongs to (sees only their
+            // own) — never an anonymous request. Checked here rather
+            // than trusting a phone/id the client could just supply.
+            if (!optional_admin($pdo)) {
+                $phone = require_customer($pdo);
+                if ($row['customer_phone'] !== $phone) {
+                    send_error('This order does not belong to you.', 403);
+                }
+            }
+
+            send_json(row_to_order($row));
         }
+
+        // No id = the full order list — admin-only (this is what backs
+        // the admin Dashboard/Orders pages). There's no "list my orders"
+        // via this branch; that's a separate, session-scoped query — see
+        // the `mine=1` branch below.
+        if (!empty($_GET['mine'])) {
+            $phone = require_customer($pdo);
+            $stmt = $pdo->prepare(order_select_sql('WHERE o.customer_phone = ?') . ' ORDER BY o.created_at DESC');
+            $stmt->execute([$phone]);
+            send_json(array_map('row_to_order', $stmt->fetchAll()));
+        }
+
+        require_admin($pdo);
         $stmt = $pdo->query(order_select_sql() . ' ORDER BY o.created_at DESC');
         send_json(array_map('row_to_order', $stmt->fetchAll()));
         break;
 
     case 'POST':
+        // Who's placing this order comes from their verified session,
+        // never from a customerPhone field in the body — otherwise
+        // anyone could place an order "as" any phone number.
+        $phone = require_customer($pdo);
+
         $data = request_body();
-        if (empty($data['items'])) send_error('Order must contain at least one item.');
+
+        $settingsRow = $pdo->query('SELECT * FROM settings WHERE id = 1')->fetch();
+        if (!$settingsRow) send_error('Settings row missing — did you import schema.sql?', 500);
+
+        $paymentMethod = $data['paymentMethod'] ?? '';
+        $codAdvancePercent = (float) ($settingsRow['cod_advance_percent'] ?? 0);
+        if ($paymentMethod === 'COD' && $codAdvancePercent > 0) {
+            // This store requires an upfront advance on COD orders right
+            // now — that has to go through razorpay_verify.php (which
+            // charges + verifies the advance) instead of straight here,
+            // otherwise a client could place a COD order for the full
+            // amount and skip the advance entirely.
+            send_error('This order needs an advance payment to confirm — please use the payment flow shown at checkout.', 400);
+        }
+
+        try {
+            $totals = compute_order_totals($pdo, $data['items'] ?? [], $settingsRow);
+        } catch (RuntimeException $e) {
+            send_error($e->getMessage());
+        }
 
         // Retry on the (very unlikely) chance of an order-id collision.
         for ($attempt = 0; $attempt < 5; $attempt++) {
@@ -34,23 +84,24 @@ switch ($method) {
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         )->execute([
             $newId,
-            $data['customerPhone'] ?? null,
+            $phone,
             $email ?: null,
             client_ip(),
             'Pending',
             json_encode($initialHistory),
-            json_encode($data['items']),
+            json_encode($totals['items']),
             json_encode($data['address'] ?? []),
-            $data['paymentMethod'] ?? '',
+            $paymentMethod,
             'unpaid', // COD orders are collected on delivery; online payments go through razorpay_verify.php instead of here
-            $data['subtotal'] ?? 0,
-            $data['discountTotal'] ?? 0,
-            $data['deliveryFee'] ?? 0,
-            $data['total'] ?? 0,
+            $totals['subtotal'],
+            $totals['discountTotal'],
+            $totals['deliveryFee'],
+            $totals['total'],
             // No advance was collected here — this endpoint is only ever hit
-            // for plain COD (settings.codAdvancePercent is 0). A COD order
-            // that DID need an upfront advance goes through
-            // razorpay_verify.php instead, which records the real amount.
+            // for plain COD (settings.codAdvancePercent is 0, enforced
+            // above). A COD order that DID need an upfront advance goes
+            // through razorpay_verify.php instead, which records the real
+            // amount.
             0,
             0,
             null,
@@ -61,6 +112,7 @@ switch ($method) {
         break;
 
     case 'PUT':
+        require_admin($pdo);
         if (!$id) send_error('Order id is required.');
         $data = request_body();
 

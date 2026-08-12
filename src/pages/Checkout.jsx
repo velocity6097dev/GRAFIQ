@@ -73,11 +73,11 @@ export default function Checkout() {
   const buildOrderData = () => ({
     items,
     address,
-    subtotal,
-    discountTotal,
-    deliveryFee,
-    total,
-    customerPhone: user?.phone,
+    // subtotal/discountTotal/deliveryFee/total are NOT sent — the backend
+    // recomputes all of it authoritatively from `items` (real catalog
+    // prices, checked against current stock) via compute_order_totals()
+    // in config.php, and customerPhone comes from the verified session
+    // (require_customer()), not from here. See SECURITY_FIXES.md.
     customerEmail: address.email?.trim() || undefined
   })
 
@@ -93,18 +93,23 @@ export default function Checkout() {
   }
 
   // Razorpay — the real three-step flow, shared by both a full online
-  // payment and a partial-COD advance payment (only the amount + what
-  // gets sent to razorpay_verify.php differ, see the two callers below):
+  // payment and a partial-COD advance payment (only `paymentMethod` +
+  // the description differ, see the two callers below):
   //   1. Ask our backend to create a Razorpay order (server-side, needs
-  //      the secret key — never do this from the browser).
+  //      the secret key — never do this from the browser). The backend
+  //      computes the actual amount itself from `items` + real catalog
+  //      prices — it does NOT trust an amount from here (see
+  //      SECURITY_FIXES.md) — so all this sends is the cart + which of
+  //      the two flows this is.
   //   2. Open Razorpay's hosted checkout with that order id.
   //   3. On success, send the payment_id/order_id/signature to our
   //      backend, which verifies the signature, cross-checks the amount
   //      against Razorpay's own record, creates our order, and queues it
   //      for a second independent verification pass in the background.
-  const payViaRazorpay = async ({ amount, description, extraOrderData }) => {
+  const payViaRazorpay = async ({ paymentMethod, description }) => {
     const { razorpayOrderId, amount: amountPaise, currency, keyId } = await api.post('/razorpay_create_order.php', {
-      amount
+      items,
+      paymentMethod
     })
 
     await loadRazorpayScript()
@@ -125,7 +130,7 @@ export default function Checkout() {
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
-              orderData: { ...buildOrderData(), ...extraOrderData }
+              orderData: { ...buildOrderData(), paymentMethod }
             })
             await finishOrder(order)
             resolve()
@@ -148,20 +153,18 @@ export default function Checkout() {
 
   const handleRazorpayOrder = () =>
     payViaRazorpay({
-      amount: total,
-      description: `Order payment — ${items.length} item${items.length > 1 ? 's' : ''}`,
-      extraOrderData: { paymentMethod: 'Razorpay', paidAmount: total }
+      paymentMethod: 'Razorpay',
+      description: `Order payment — ${items.length} item${items.length > 1 ? 's' : ''}`
     })
 
-  // Partial-COD: charges just the non-refundable advance now; the order
-  // itself is still recorded as COD, with the remainder due in cash on
-  // delivery. `paidAmount` (≠ `total`) is what razorpay_verify.php
-  // cross-checks against what Razorpay actually charged.
+  // Partial-COD: charges just the non-refundable advance now (the backend
+  // computes exactly how much from settings.cod_advance_percent — see
+  // razorpay_create_order.php); the order itself is still recorded as
+  // COD, with the remainder due in cash on delivery.
   const handleCodAdvancePayment = () =>
     payViaRazorpay({
-      amount: codAdvanceAmount,
-      description: 'Advance payment to confirm your COD order (non-refundable)',
-      extraOrderData: { paymentMethod: 'COD', paidAmount: codAdvanceAmount, advanceAmount: codAdvanceAmount }
+      paymentMethod: 'COD',
+      description: 'Advance payment to confirm your COD order (non-refundable)'
     })
 
   // TODO(production): also point Razorpay's dashboard at

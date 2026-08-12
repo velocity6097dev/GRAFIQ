@@ -26,6 +26,11 @@ function row_to_settings(array $r): array
 
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Reads are public (the storefront needs them); writes are admin-only.
+if ($method !== 'GET') {
+    require_admin($pdo);
+}
+
 switch ($method) {
     case 'GET':
         $stmt = $pdo->query('SELECT * FROM settings WHERE id = 1');

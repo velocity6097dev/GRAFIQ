@@ -8,7 +8,11 @@ Built with **React + React Router + Tailwind CSS + Framer Motion**, backed by
 > **Setting this up for the first time?** See
 > [`DATABASE_SETUP.md`](./DATABASE_SETUP.md) for the XAMPP/MySQL steps —
 > do that first, then come back here. Want online payments working too?
-> See [`RAZORPAY_SETUP.md`](./RAZORPAY_SETUP.md) after that.
+> See [`RAZORPAY_SETUP.md`](./RAZORPAY_SETUP.md) after that. Already had a
+> database from before real admin/customer sessions existed? Run
+> `grafiq-api/schema/migration/migration_auth_sessions.sql` — see
+> [`SECURITY_FIXES.md`](./SECURITY_FIXES.md) for what that migration is
+> and why every write endpoint now requires it.
 
 ## Quick start
 

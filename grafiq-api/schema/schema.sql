@@ -22,6 +22,8 @@ DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS banners;
 DROP TABLE IF EXISTS settings;
 DROP TABLE IF EXISTS admin_users;
+DROP TABLE IF EXISTS admin_sessions;
+DROP TABLE IF EXISTS customer_sessions;
 DROP TABLE IF EXISTS customers;
 DROP TABLE IF EXISTS shiprocket_auth;
 
@@ -93,6 +95,25 @@ CREATE TABLE admin_users (
   username      VARCHAR(100) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Server-verified sessions issued on login (admin) / OTP-verify
+-- (customer) — see require_admin()/require_customer() in config.php.
+-- Every non-public endpoint checks one of these instead of trusting
+-- anything the client claims about itself.
+CREATE TABLE admin_sessions (
+  token      CHAR(64) PRIMARY KEY,
+  username   VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE customer_sessions (
+  token      CHAR(64) PRIMARY KEY,
+  phone      VARCHAR(15) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  INDEX idx_customer_sessions_phone (phone)
 ) ENGINE=InnoDB;
 
 CREATE TABLE customers (

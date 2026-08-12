@@ -27,6 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     send_error('Method not allowed.', 405);
 }
 
+require_admin($pdo);
+
 $phone = preg_replace('/\D/', '', $_GET['phone'] ?? '');
 if (!$phone) send_error('phone is required.');
 

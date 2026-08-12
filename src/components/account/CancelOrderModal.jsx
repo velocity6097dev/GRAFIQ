@@ -3,7 +3,6 @@ import { AlertTriangle } from 'lucide-react'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 import { useStore } from '../../context/StoreContext'
-import { useAuth } from '../../context/AuthContext'
 
 const REASONS = [
   'Ordered by mistake',
@@ -15,7 +14,6 @@ const REASONS = [
 
 export default function CancelOrderModal({ order, open, onClose }) {
   const { cancelOrder } = useStore()
-  const { user } = useAuth()
   const [reason, setReason] = useState(REASONS[0])
   const [customReason, setCustomReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -35,7 +33,7 @@ export default function CancelOrderModal({ order, open, onClose }) {
     setError('')
     try {
       const finalReason = reason === 'Other' ? customReason.trim() || 'Other' : reason
-      const updated = await cancelOrder(order.id, user.phone, finalReason)
+      const updated = await cancelOrder(order.id, finalReason)
       setResult(updated)
     } catch (err) {
       setError(err.message || 'Could not cancel this order.')

@@ -3,16 +3,17 @@
  * GRAFIQ store API — shared config & helpers.
  * Every endpoint file starts with: require __DIR__ . '/config.php';
  *
- * Talks to a local MySQL database via XAMPP. Default XAMPP MySQL is
- * root / (empty password) on localhost — change the constants below if
- * your setup differs.
+ * Talks to MySQL — locally via XAMPP by default (see DB_HOST etc. below),
+ * or your real host's MySQL once this is deployed (InfinityFree and
+ * similar). Default XAMPP MySQL is root / (empty password) on localhost
+ * — change the DB_* constants below if your setup differs.
  */
 
 // ---------- CORS (Vite dev server runs on a different port, so the
 // browser treats it as a different origin) ----------
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Admin-Token, X-Customer-Token');
 header('Content-Type: application/json; charset=UTF-8');
 
 // Preflight requests end here. (CLI has no REQUEST_METHOD — that's fine,
@@ -23,13 +24,71 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     exit;
 }
 
+// ---------- Always return JSON, never leak a raw PHP/MySQL error ----------
+// Shared hosting (this app is commonly deployed to free tiers like
+// InfinityFree, which is intermittently flaky about MySQL — connection
+// limits, brief drops, the odd restart) can produce two very different
+// failure shapes if left unhandled: an uncaught PDOException (e.g. MySQL
+// dropping mid-request, which is a *query* failing, not just the initial
+// connect) turns into a raw PHP fatal-error HTML page, and any stray
+// PHP warning/notice printed before send_json()'s json_encode() call
+// corrupts the JSON stream even on an otherwise-successful request. Both
+// show up client-side as "the API returned a non-JSON response". Neither
+// should ever reach a person's browser, and a raw MySQL error message
+// (which can include the DB host/user) definitely shouldn't either.
+//
+// display_errors=0 stops PHP's own output from leaking into a response
+// body; the exception handler + shutdown function below are what turn
+// *any* otherwise-uncaught error anywhere in any endpoint — not just the
+// DB connection below — into a clean JSON response instead. The detail
+// still goes to the server's error log via error_log(), so it's not lost
+// for actual debugging, just never shown to the person using the site.
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+
+/**
+ * The one place that turns "something broke" into the JSON body every
+ * endpoint is expected to return. `transient` tells the frontend this is
+ * the kind of failure worth quietly retrying (a DB hiccup) rather than
+ * giving up immediately — see the retry logic in src/api/client.js.
+ */
+function fail_gracefully(string $logDetail, int $status = 500, bool $transient = false): void
+{
+    error_log('[grafiq-api] ' . $logDetail);
+    if (!headers_sent()) {
+        http_response_code($status);
+        header('Content-Type: application/json; charset=UTF-8');
+    }
+    echo json_encode([
+        'error'     => 'Something went wrong on our end — please try again in a moment.',
+        'transient' => $transient,
+    ]);
+    exit;
+}
+
+set_exception_handler(function (Throwable $e) {
+    // A dropped/expired MySQL connection mid-query throws a PDOException
+    // here too (not just at the initial connect below) — treat those as
+    // transient the same way, since a retry from the top of the request
+    // would very likely succeed.
+    $transient = $e instanceof PDOException;
+    fail_gracefully(get_class($e) . ': ' . $e->getMessage(), $transient ? 503 : 500, $transient);
+});
+
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        fail_gracefully("Fatal: {$error['message']} in {$error['file']}:{$error['line']}");
+    }
+});
+
 // ---------- Razorpay ----------
 // Get your test-mode keys free at https://dashboard.razorpay.com/app/keys
 // (no live/business verification needed to test — test mode works
 // immediately after signup). Paste them here. Never put the key SECRET
 // in any frontend file — it only belongs here, server-side.
-const RAZORPAY_KEY_ID = 'rzp_test_XXXXXXXXXXXXXX';
-const RAZORPAY_KEY_SECRET = 'YOUR_TEST_KEY_SECRET_HERE';
+const RAZORPAY_KEY_ID = 'kwy';
+const RAZORPAY_KEY_SECRET = 'secret';
 // Optional: set this up under Settings → Webhooks in the Razorpay
 // dashboard if you deploy publicly (see grafiq-api/razorpay_webhook.php).
 // Not needed for local XAMPP testing — the queue worker covers that case.
@@ -41,10 +100,10 @@ const RAZORPAY_WEBHOOK_SECRET = '';
 // paste its email/password below. See SHIPROCKET_SETUP.md for the full
 // walkthrough, including where to find the two values below it.
 const SHIPROCKET_EMAIL = 'email';
-const SHIPROCKET_PASSWORD = 'api pass';
+const SHIPROCKET_PASSWORD = 'api password';
 // Exactly as it appears under Settings → Pickup Addresses in your
 // Shiprocket dashboard — the address's "Nickname", not the address text.
-const SHIPROCKET_PICKUP_LOCATION = 'Primary';
+const SHIPROCKET_PICKUP_LOCATION = 'Home';
 // That same pickup address's 6-digit pincode. Kept separate from the
 // nickname above because the rate-check API needs an actual postcode,
 // not a name.
@@ -169,6 +228,12 @@ function shiprocket_request(PDO $pdo, string $method, string $path, ?array $body
 }
 
 // ---------- Database connection ----------
+// XAMPP defaults (localhost / root / empty password) — if this is
+// deployed to real hosting (InfinityFree, etc.), these four need to be
+// that host's actual DB credentials instead, which is nearly always a
+// hostname that is NOT "localhost" (something like sqlXXX.epizy.com),
+// a username/database prefixed with your account id, and a real
+// password — check your host's control panel / MySQL Databases page.
 const DB_HOST = 'localhost';
 const DB_NAME = 'grafiq_store';
 const DB_USER = 'root';
@@ -187,17 +252,38 @@ $options = [
     // INSERT/UPDATE. Explicitly running SET NAMES on every new
     // connection closes that gap regardless of driver quirks.
     PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8mb4'",
+    // A couple of seconds, not PHP's default (which can be a long, silent
+    // hang on shared hosting when MySQL is genuinely unreachable) — fails
+    // fast enough that the retry loop below still returns quickly instead
+    // of a request just hanging.
+    PDO::ATTR_TIMEOUT             => 5,
 ];
 
-try {
-    $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode([
-        'error' => 'Database connection failed. Is XAMPP\'s MySQL running, and did you import schema.sql? (' . $e->getMessage() . ')'
-    ]);
-    exit;
+// Shared hosting (InfinityFree and similar free tiers especially) can
+// have brief MySQL hiccups — a connection-limit blip, a restart, a
+// dropped connection — where trying again half a second later succeeds
+// fine. Retrying a couple of times here, inside the same request, is
+// what actually fixes "it works if I just refresh" instead of just
+// hiding it — most transient blips never even reach the person as an
+// error at all now.
+$pdo = null;
+$lastConnectionError = null;
+for ($attempt = 1; $attempt <= 3; $attempt++) {
+    try {
+        $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+        break;
+    } catch (PDOException $e) {
+        $lastConnectionError = $e;
+        if ($attempt < 3) {
+            usleep(300000 * $attempt); // 300ms, then 600ms
+        }
+    }
 }
+
+if (!$pdo) {
+    fail_gracefully('DB connection failed after 3 attempts: ' . $lastConnectionError->getMessage(), 503, true);
+}
+
 
 // ---------- Helpers ----------
 
@@ -271,6 +357,229 @@ function append_status_history(array $currentHistory, string $newStatus): array
 function razorpay_configured(): bool
 {
     return RAZORPAY_KEY_ID !== 'rzp_test_XXXXXXXXXXXXXX' && RAZORPAY_KEY_SECRET !== 'YOUR_TEST_KEY_SECRET_HERE';
+}
+
+// ---------- Auth (admin + customer sessions) ----------
+//
+// Login/OTP-verify endpoints (admin_auth.php, customer_auth.php) issue an
+// opaque random token, stored server-side in admin_sessions /
+// customer_sessions with an expiry. The frontend sends it back on every
+// request as a custom header — X-Admin-Token for admin actions,
+// X-Customer-Token for actions scoped to a signed-in customer — and
+// every endpoint that needs to enforce who's allowed to do something
+// calls require_admin() or require_customer() below to check it, rather
+// than trusting anything the client claims about itself (a `phone`
+// field, an `isAdmin` flag, etc.) in the request body.
+
+const ADMIN_SESSION_DAYS = 7;
+const CUSTOMER_SESSION_DAYS = 30;
+
+/** 64 hex chars of randomness — used as an opaque session token. */
+function generate_token(): string
+{
+    return bin2hex(random_bytes(32));
+}
+
+function bearer_token_from_header(string $headerName): ?string
+{
+    $key = 'HTTP_' . strtoupper(str_replace('-', '_', $headerName));
+    $value = trim($_SERVER[$key] ?? '');
+    return $value !== '' ? $value : null;
+}
+
+function create_admin_session(PDO $pdo, string $username): string
+{
+    $token = generate_token();
+    $expiresAt = (new DateTime('+' . ADMIN_SESSION_DAYS . ' days'))->format('Y-m-d H:i:s');
+    $pdo->prepare('INSERT INTO admin_sessions (token, username, expires_at) VALUES (?, ?, ?)')
+        ->execute([$token, $username, $expiresAt]);
+    return $token;
+}
+
+function create_customer_session(PDO $pdo, string $phone): string
+{
+    $token = generate_token();
+    $expiresAt = (new DateTime('+' . CUSTOMER_SESSION_DAYS . ' days'))->format('Y-m-d H:i:s');
+    $pdo->prepare('INSERT INTO customer_sessions (token, phone, expires_at) VALUES (?, ?, ?)')
+        ->execute([$token, $phone, $expiresAt]);
+    return $token;
+}
+
+/**
+ * Every admin-only endpoint (or admin-only branch of an endpoint) calls
+ * this first. Exits with 401 via send_error() if there's no valid,
+ * unexpired admin session — callers don't need to check a return value,
+ * anything after this line only runs for a real signed-in admin.
+ */
+function require_admin(PDO $pdo): array
+{
+    $token = bearer_token_from_header('X-Admin-Token');
+    if (!$token) send_error('Admin sign-in required.', 401);
+
+    $stmt = $pdo->prepare('SELECT * FROM admin_sessions WHERE token = ? AND expires_at > NOW()');
+    $stmt->execute([$token]);
+    $session = $stmt->fetch();
+    if (!$session) send_error('Your admin session has expired — please sign in again.', 401);
+
+    return $session;
+}
+
+/**
+ * Same lookup as require_admin(), but returns null instead of exiting
+ * when there's no valid session — for endpoints an admin and a customer
+ * both legitimately hit (e.g. looking up a single order), where the
+ * caller decides what to do next rather than always requiring an admin.
+ */
+function optional_admin(PDO $pdo): ?array
+{
+    $token = bearer_token_from_header('X-Admin-Token');
+    if (!$token) return null;
+    $stmt = $pdo->prepare('SELECT * FROM admin_sessions WHERE token = ? AND expires_at > NOW()');
+    $stmt->execute([$token]);
+    return $stmt->fetch() ?: null;
+}
+
+/**
+ * Every endpoint that needs to know *which* customer is making the
+ * request calls this — returns the verified phone number straight from
+ * the session, which is what callers should use everywhere they'd
+ * otherwise be tempted to read a `phone`/`customerPhone` field out of
+ * the request body (that field is never trustworthy — the whole point
+ * of this function is that the phone comes from something the client
+ * can't simply type in). Exits with 401 if there's no valid session.
+ */
+function require_customer(PDO $pdo): string
+{
+    $token = bearer_token_from_header('X-Customer-Token');
+    if (!$token) send_error('Please verify your phone number to continue.', 401);
+
+    $stmt = $pdo->prepare('SELECT * FROM customer_sessions WHERE token = ? AND expires_at > NOW()');
+    $stmt->execute([$token]);
+    $session = $stmt->fetch();
+    if (!$session) send_error('Your session has expired — please verify your phone number again.', 401);
+
+    return $session['phone'];
+}
+
+// ---------- Order pricing (server-side, never trust a client-supplied
+// amount — see the P0 finding this closes: "Razorpay order creation
+// accepts arbitrary client-supplied amount", which applies just as much
+// to the plain Cash-on-Delivery path through orders.php) ----------
+
+// Mirrors src/pages/DesignYourOwn.jsx's BASE_GARMENTS/PLACEMENTS tables —
+// the "Design Your Own" flow prices a custom item from these two small
+// tables client-side rather than a real catalog row, so this is the
+// authoritative copy used to price them server-side too. Keep both in
+// sync if you ever change prices in DesignYourOwn.jsx.
+const CUSTOM_GARMENT_PRICES = ['tee' => 599, 'oversized' => 749, 'hoodie' => 1499];
+const CUSTOM_PLACEMENT_FEES = ['front' => 0, 'back' => 100, 'both' => 180];
+
+/**
+ * Recomputes an authoritative subtotal/discount/delivery-fee/total from
+ * a cart's line items, fresh from the database — this is the one place
+ * that decides what an order actually costs. A client can send whatever
+ * it wants in `price`, `discount`, `subtotal`, `total`, etc. (browser
+ * devtools, a raw API call, whatever); none of it is used. Every catalog
+ * item's price/discount is looked up by productId in `products`; every
+ * custom "Design Your Own" item is priced from CUSTOM_GARMENT_PRICES/
+ * CUSTOM_PLACEMENT_FEES above. Also checks stock, so this doubles as the
+ * one place that rejects "add 9999 of something with only 3 in stock".
+ *
+ * Returns ['items' => sanitizedItems, 'subtotal' => .., 'discountTotal'
+ * => .., 'deliveryFee' => .., 'total' => ..]. Throws RuntimeException
+ * (callers should turn that into a 400 via send_error) on anything
+ * invalid — a discontinued product, a garbage quantity, a custom item
+ * that no longer matches a known garment/placement, etc.
+ */
+function compute_order_totals(PDO $pdo, array $items, array $settings): array
+{
+    if (!$items) throw new RuntimeException('Order must contain at least one item.');
+
+    $sanitized = [];
+    $subtotal = 0.0;
+    $discountTotal = 0.0;
+
+    foreach ($items as $item) {
+        $qty = (int) ($item['qty'] ?? 0);
+        if ($qty < 1 || $qty > 50) {
+            throw new RuntimeException('Each item needs a quantity between 1 and 50.');
+        }
+
+        $isCustom = !empty($item['isCustom']);
+
+        if ($isCustom) {
+            $garmentId = $item['garmentId'] ?? null;
+            // Older cart items (already in someone's browser localStorage
+            // from before this field existed) only have it embedded in
+            // the productId, e.g. "custom-hoodie-1730000000000".
+            if (!$garmentId && preg_match('/^custom-([a-z]+)-\d+$/', (string) ($item['productId'] ?? ''), $m)) {
+                $garmentId = $m[1];
+            }
+            $placement = $item['customDesign']['placement'] ?? null;
+
+            if (!isset(CUSTOM_GARMENT_PRICES[$garmentId]) || !isset(CUSTOM_PLACEMENT_FEES[$placement])) {
+                throw new RuntimeException('One of the custom items in your cart is no longer valid — please remove and re-add it.');
+            }
+
+            $price = CUSTOM_GARMENT_PRICES[$garmentId] + CUSTOM_PLACEMENT_FEES[$placement];
+            $discount = 0;
+            $name = $item['name'] ?? 'Custom Item';
+            $image = $item['image'] ?? null;
+        } else {
+            $productId = $item['productId'] ?? null;
+            if (!$productId) throw new RuntimeException('One of the items in your cart is missing a product.');
+
+            $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
+            $stmt->execute([$productId]);
+            $product = $stmt->fetch();
+            if (!$product) {
+                throw new RuntimeException("An item in your cart is no longer available — please remove it and try again.");
+            }
+            if ((int) $product['stock'] < $qty) {
+                throw new RuntimeException("Only {$product['stock']} of \"{$product['name']}\" left in stock — please adjust the quantity.");
+            }
+
+            $price = (float) $product['price'];
+            $discount = (int) $product['discount'];
+            $name = $product['name'];
+            $images = decode_json_column($product['images']);
+            $image = $images[0] ?? null;
+        }
+
+        // Same rounding as getDiscountedPrice() in src/utils/format.js —
+        // round the per-unit discounted price once, then multiply by qty,
+        // so this matches the total the customer saw on screen exactly.
+        $unitFinal = $discount > 0 ? round($price - ($price * $discount / 100)) : $price;
+        $subtotal += $price * $qty;
+        $discountTotal += ($price - $unitFinal) * $qty;
+
+        $sanitized[] = [
+            'lineId'       => $item['lineId'] ?? null,
+            'productId'    => $item['productId'] ?? null,
+            'name'         => $name,
+            'image'        => $image,
+            'price'        => $price,
+            'discount'     => $discount,
+            'size'         => $item['size'] ?? null,
+            'color'        => $item['color'] ?? null,
+            'qty'          => $qty,
+            'isCustom'     => $isCustom,
+            'customDesign' => $item['customDesign'] ?? null,
+        ];
+    }
+
+    $payable = $subtotal - $discountTotal;
+    $freeDeliveryAbove = (float) ($settings['free_delivery_above'] ?? 0);
+    $deliveryFee = ($payable <= 0 || $payable >= $freeDeliveryAbove) ? 0.0 : (float) ($settings['delivery_fee'] ?? 0);
+    $total = $payable + $deliveryFee;
+
+    return [
+        'items'         => $sanitized,
+        'subtotal'      => round($subtotal, 2),
+        'discountTotal' => round($discountTotal, 2),
+        'deliveryFee'   => round($deliveryFee, 2),
+        'total'         => round($total, 2),
+    ];
 }
 
 /**

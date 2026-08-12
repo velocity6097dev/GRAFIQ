@@ -5,6 +5,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     send_error('Method not allowed.', 405);
 }
 
+// Which customer this order belongs to comes from their verified
+// session, never from orderData.customerPhone in the body.
+$phone = require_customer($pdo);
+
 $data = request_body();
 $razorpayOrderId   = $data['razorpayOrderId'] ?? '';
 $razorpayPaymentId = $data['razorpayPaymentId'] ?? '';
@@ -14,9 +18,6 @@ $orderData         = $data['orderData'] ?? [];
 if (!$razorpayOrderId || !$razorpayPaymentId || !$razorpaySignature) {
     send_error('Missing payment details from Razorpay.');
 }
-if (empty($orderData['items'])) {
-    send_error('Order must contain at least one item.');
-}
 
 // This endpoint handles two different payments that both go through
 // Razorpay's checkout:
@@ -24,8 +25,6 @@ if (empty($orderData['items'])) {
 //   - the non-refundable upfront advance on a partial-COD order
 //     (paymentMethod: 'COD') — see the partial-COD feature: the customer
 //     pays settings.codAdvancePercent% now, the rest in cash on delivery.
-// `paidAmount` is what was actually charged via Razorpay right now;
-// `total` stays the full order value either way.
 $isCodAdvance = ($orderData['paymentMethod'] ?? '') === 'COD';
 
 // ---------- Step 1: signature check (fast, no network call) ----------
@@ -38,9 +37,26 @@ if (!hash_equals($expectedSignature, $razorpaySignature)) {
     send_error('Payment verification failed (signature mismatch). If you were actually charged, contact support with your payment ID.', 400);
 }
 
-// ---------- Step 2: cross-check the amount against Razorpay's own
-// record of the order, so a tampered client can't claim a bigger cart
-// total than what was actually paid ----------
+// ---------- Step 2: recompute the authoritative order total server-side
+// (never trust orderData.items' price/discount fields, or
+// orderData.subtotal/total directly) and cross-check it — together with
+// which of the two payment flows this is — against what Razorpay
+// actually charged, so a tampered client can't claim a cheaper/different
+// cart than what was actually paid for ----------
+$settingsRow = $pdo->query('SELECT * FROM settings WHERE id = 1')->fetch();
+if (!$settingsRow) send_error('Settings row missing — did you import schema.sql?', 500);
+
+try {
+    $totals = compute_order_totals($pdo, $orderData['items'] ?? [], $settingsRow);
+} catch (RuntimeException $e) {
+    send_error($e->getMessage());
+}
+
+$codAdvancePercent = (float) ($settingsRow['cod_advance_percent'] ?? 0);
+$expectedAmount = $isCodAdvance
+    ? round($totals['total'] * $codAdvancePercent / 100, 2)
+    : $totals['total'];
+
 try {
     [$rzpStatus, $rzpOrder] = razorpay_request('GET', "/orders/{$razorpayOrderId}");
 } catch (RuntimeException $e) {
@@ -50,8 +66,7 @@ if ($rzpStatus < 200 || $rzpStatus >= 300 || empty($rzpOrder['id'])) {
     send_error('Could not confirm this payment with Razorpay right now. If you were charged, contact support with your payment ID.', 502);
 }
 $paidRupees = ($rzpOrder['amount'] ?? 0) / 100;
-$claimedPaid = (float) ($orderData['paidAmount'] ?? $orderData['total'] ?? 0);
-if (abs($paidRupees - $claimedPaid) > 0.5) {
+if (abs($paidRupees - $expectedAmount) > 0.5) {
     send_error('The paid amount does not match this order — rejected for your protection. Contact support with your payment ID.', 400);
 }
 
@@ -78,23 +93,26 @@ $email = $orderData['customerEmail'] ?? ($orderData['address']['email'] ?? null)
 
 $pdo->beginTransaction();
 try {
+    $initialHistory = [['status' => 'Pending', 'at' => (new DateTime())->format(DATE_ATOM)]];
+
     $pdo->prepare(
-        'INSERT INTO orders (id, customer_phone, customer_email, customer_ip, status, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, advance_amount, advance_paid, shipping)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+        'INSERT INTO orders (id, customer_phone, customer_email, customer_ip, status, status_history, items, address, payment_method, payment_status, subtotal, discount_total, delivery_fee, total, advance_amount, advance_paid, shipping)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
     )->execute([
         $newOrderId,
-        $orderData['customerPhone'] ?? null,
+        $phone,
         $email ?: null,
         client_ip(),
         'Pending',
-        json_encode($orderData['items']),
+        json_encode($initialHistory),
+        json_encode($totals['items']),
         json_encode($orderData['address'] ?? []),
         $paymentMethodToStore,
         $paymentStatusToStore,
-        $orderData['subtotal'] ?? 0,
-        $orderData['discountTotal'] ?? 0,
-        $orderData['deliveryFee'] ?? 0,
-        $orderData['total'] ?? 0,
+        $totals['subtotal'],
+        $totals['discountTotal'],
+        $totals['deliveryFee'],
+        $totals['total'],
         $advanceAmount,
         $advancePaid,
         null,

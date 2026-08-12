@@ -50,6 +50,7 @@ export default function DesignYourOwn() {
   const handleAddToCart = () => {
     addToCart({
       productId: `custom-${garment}-${Date.now()}`,
+      garmentId: garment,
       name: `Custom ${selectedGarment.label}`,
       image: artwork || 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&q=80',
       price: total,

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 import { useStore } from '../../context/StoreContext'
-import { useAuth } from '../../context/AuthContext'
 
 const REASONS = [
   'Wrong size',
@@ -15,7 +14,6 @@ const REASONS = [
 
 export default function RequestReplacementModal({ order, open, onClose, onSubmitted }) {
   const { requestReplacement } = useStore()
-  const { user } = useAuth()
 
   const [productId, setProductId] = useState(order?.items?.[0]?.productId || '')
   const [reason, setReason] = useState(REASONS[0])
@@ -48,7 +46,6 @@ export default function RequestReplacementModal({ order, open, onClose, onSubmit
     try {
       const created = await requestReplacement({
         orderId: order.id,
-        customerPhone: user.phone,
         productId: selectedItem.productId,
         productName: selectedItem.name,
         reason,

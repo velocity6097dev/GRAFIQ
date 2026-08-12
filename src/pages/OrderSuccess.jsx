@@ -14,8 +14,8 @@ const paymentStatusLabel = {
 
 export default function OrderSuccess() {
   const { orderId } = useParams()
-  const { orders, settings, runPaymentQueue } = useStore()
-  const order = orders.find((o) => o.id === orderId)
+  const { myOrders, settings, runPaymentQueue } = useStore()
+  const order = myOrders.find((o) => o.id === orderId)
 
   // For local/demo use without a real cron job running, nudge the
   // verification queue once after landing here so a Razorpay payment's

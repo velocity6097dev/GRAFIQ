@@ -14,7 +14,7 @@ const PAGE_SIZE = 10
 
 export default function Account() {
   const { user, logout } = useAuth()
-  const { orders, replacements } = useStore()
+  const { myOrders: orders, myReplacements: replacements } = useStore()
   const [page, setPage] = useState(1)
 
   const [viewOrder, setViewOrder] = useState(null)
@@ -22,14 +22,12 @@ export default function Account() {
   const [cancelOrderTarget, setCancelOrderTarget] = useState(null)
   const [replacementOrder, setReplacementOrder] = useState(null)
 
+  // Server already scopes this to the signed-in customer (see
+  // orders.php's `mine=1` branch) — just sort for display, no more
+  // filtering a global list down to "mine" client-side.
   const myOrders = useMemo(
-    () =>
-      user
-        ? orders
-            .filter((o) => o.customerPhone === user.phone)
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        : [],
-    [orders, user]
+    () => [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    [orders]
   )
 
   // Most recent replacement per order, for the card's quick status line

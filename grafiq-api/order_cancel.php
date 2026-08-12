@@ -13,13 +13,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // is just the friendly version of the same rule.
 const CANCELLABLE_STATUSES = ['Pending', 'Confirmed', 'Processing'];
 
+// Which customer this is comes from their verified session, not from a
+// customerPhone field in the body — otherwise anyone who knew (or
+// guessed) an order id + the phone number on it could cancel someone
+// else's order.
+$phone = require_customer($pdo);
+
 $data = request_body();
 $orderId = $data['orderId'] ?? '';
-$phone = preg_replace('/\D/', '', $data['customerPhone'] ?? '');
 $reason = trim($data['reason'] ?? '');
 
-if (!$orderId || !$phone) {
-    send_error('orderId and customerPhone are required.');
+if (!$orderId) {
+    send_error('orderId is required.');
 }
 
 $stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
@@ -28,10 +33,8 @@ $order = $stmt->fetch();
 
 if (!$order) send_error('Order not found.', 404);
 
-// Ownership check — same lightweight phone-match approach used
-// elsewhere in this demo (see customer_auth.php); there's no full
-// session/token system, so this is what stands in for "is this really
-// your order".
+// Ownership check — now against the session-verified phone above, not
+// anything the client could simply assert.
 if ($order['customer_phone'] !== $phone) {
     send_error('This order does not belong to that phone number.', 403);
 }

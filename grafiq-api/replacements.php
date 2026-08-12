@@ -33,19 +33,44 @@ $id = $_GET['id'] ?? null;
 
 switch ($method) {
     case 'GET':
+        // A single replacement or all of one order's replacements: allow
+        // either a signed-in admin, or the signed-in customer who
+        // actually owns the underlying order — never anonymous.
         if ($id) {
             $stmt = $pdo->prepare('SELECT * FROM replacements WHERE id = ?');
             $stmt->execute([$id]);
             $row = $stmt->fetch();
-            send_json($row ? row_to_replacement($row) : null);
+            if (!$row) send_json(null);
+
+            if (!optional_admin($pdo)) {
+                $phone = require_customer($pdo);
+                $ownerStmt = $pdo->prepare('SELECT customer_phone FROM orders WHERE id = ?');
+                $ownerStmt->execute([$row['order_id']]);
+                if (($ownerStmt->fetchColumn() ?: null) !== $phone) {
+                    send_error('This replacement request does not belong to you.', 403);
+                }
+            }
+            send_json(row_to_replacement($row));
         }
+
         if (!empty($_GET['orderId'])) {
+            if (!optional_admin($pdo)) {
+                $phone = require_customer($pdo);
+                $ownerStmt = $pdo->prepare('SELECT customer_phone FROM orders WHERE id = ?');
+                $ownerStmt->execute([$_GET['orderId']]);
+                if (($ownerStmt->fetchColumn() ?: null) !== $phone) {
+                    send_error('This order does not belong to you.', 403);
+                }
+            }
             $stmt = $pdo->prepare('SELECT * FROM replacements WHERE order_id = ? ORDER BY created_at DESC');
             $stmt->execute([$_GET['orderId']]);
             send_json(array_map('row_to_replacement', $stmt->fetchAll()));
         }
-        if (!empty($_GET['customerPhone'])) {
-            $phone = preg_replace('/\D/', '', $_GET['customerPhone']);
+
+        // A signed-in customer's own replacement history (Account page) —
+        // scoped by their verified session, never a client-supplied phone.
+        if (!empty($_GET['mine'])) {
+            $phone = require_customer($pdo);
             $stmt = $pdo->prepare(
                 'SELECT r.* FROM replacements r
                  JOIN orders o ON o.id = r.order_id
@@ -55,18 +80,26 @@ switch ($method) {
             $stmt->execute([$phone]);
             send_json(array_map('row_to_replacement', $stmt->fetchAll()));
         }
+
         // Admin view — everything.
+        require_admin($pdo);
         $stmt = $pdo->query('SELECT * FROM replacements ORDER BY created_at DESC');
         send_json(array_map('row_to_replacement', $stmt->fetchAll()));
         break;
 
     case 'POST':
+        // Which customer this is comes from their verified session, not
+        // a customerPhone field in the body — otherwise anyone could
+        // file a replacement request "as" any phone number (the
+        // order-ownership check right below this would then be checking
+        // against a phone the client just made up).
+        $phone = require_customer($pdo);
+
         $data = request_body();
         $orderId = $data['orderId'] ?? '';
-        $phone = preg_replace('/\D/', '', $data['customerPhone'] ?? '');
 
-        if (!$orderId || !$phone || empty($data['productId']) || empty($data['reason'])) {
-            send_error('orderId, customerPhone, productId, and reason are required.');
+        if (!$orderId || empty($data['productId']) || empty($data['reason'])) {
+            send_error('orderId, productId, and reason are required.');
         }
 
         $stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
@@ -75,7 +108,7 @@ switch ($method) {
         if (!$order) send_error('Order not found.', 404);
 
         if ($order['customer_phone'] !== $phone) {
-            send_error('This order does not belong to that phone number.', 403);
+            send_error('This order does not belong to you.', 403);
         }
         if ($order['status'] !== REPLACEMENT_ELIGIBLE_STATUS) {
             send_error(
@@ -108,6 +141,7 @@ switch ($method) {
         break;
 
     case 'PUT':
+        require_admin($pdo);
         if (!$id) send_error('Replacement id is required.');
         $data = request_body();
 

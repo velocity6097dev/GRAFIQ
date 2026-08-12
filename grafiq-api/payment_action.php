@@ -18,6 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     send_error('Method not allowed.', 405);
 }
 
+require_admin($pdo);
+
 $data = request_body();
 $orderId = trim($data['orderId'] ?? '');
 $action = $data['action'] ?? '';

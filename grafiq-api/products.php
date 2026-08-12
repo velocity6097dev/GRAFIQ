@@ -23,6 +23,11 @@ function row_to_product(array $r): array
 $method = $_SERVER['REQUEST_METHOD'];
 $id = $_GET['id'] ?? null;
 
+// Reads are public (the storefront needs them); writes are admin-only.
+if ($method !== 'GET') {
+    require_admin($pdo);
+}
+
 switch ($method) {
     case 'GET':
         if ($id) {

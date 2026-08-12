@@ -21,6 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     send_error('Method not allowed.', 405);
 }
 
+require_admin($pdo);
+
 if (!shiprocket_configured()) {
     send_error(
         'Shiprocket is not set up yet. Add SHIPROCKET_EMAIL, SHIPROCKET_PASSWORD, and ' .

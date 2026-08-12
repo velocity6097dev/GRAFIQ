@@ -45,15 +45,40 @@ switch ($action) {
             $customer = ['id' => $newId, 'phone' => $phone, 'name' => ''];
         }
 
+        $token = create_customer_session($pdo, $phone);
+
         send_json([
             'success' => true,
-            'user' => ['phone' => $customer['phone'], 'name' => $customer['name']],
+            'token'   => $token,
+            'user'    => ['phone' => $customer['phone'], 'name' => $customer['name']],
         ]);
         break;
 
+    // Confirms a stored X-Customer-Token is still valid and returns the
+    // current profile — called once on app load, same purpose as
+    // admin_auth.php's 'verify' action.
+    case 'whoami':
+        $phone = require_customer($pdo);
+        $stmt = $pdo->prepare('SELECT * FROM customers WHERE phone = ?');
+        $stmt->execute([$phone]);
+        $customer = $stmt->fetch();
+        if (!$customer) send_error('Customer not found.', 404);
+        send_json(['success' => true, 'user' => ['phone' => $customer['phone'], 'name' => $customer['name']]]);
+        break;
+
+    case 'logout':
+        $token = bearer_token_from_header('X-Customer-Token');
+        if ($token) {
+            $pdo->prepare('DELETE FROM customer_sessions WHERE token = ?')->execute([$token]);
+        }
+        send_json(['success' => true]);
+        break;
+
     case 'update_profile':
-        $phone = preg_replace('/\D/', '', $data['phone'] ?? '');
-        if (!$phone) send_error('phone is required.');
+        // Which customer this updates comes from the session, never from
+        // a `phone` field in the request body — otherwise anyone could
+        // rename any customer just by sending their phone number.
+        $phone = require_customer($pdo);
 
         if (array_key_exists('name', $data)) {
             $pdo->prepare('UPDATE customers SET name = ? WHERE phone = ?')->execute([$data['name'], $phone]);
